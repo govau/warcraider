@@ -1,5 +1,26 @@
 #[macro_use]
 extern crate lazy_static;
+#[macro_export]
+macro_rules! warc_result {
+    ($warc: ident ) => {
+					match $warc.next() {
+						None => rust_warc::WarcRecord {
+				version: String::from("0"),
+				header: HashMap::<rust_warc::CaseString, String>::new(),
+				content: Vec::<u8>::new(),
+			},
+						Some(w) => {match w {
+						Ok(w) => w,
+						Err(_e) => rust_warc::WarcRecord {
+				version: String::from("0"),
+				header: HashMap::<rust_warc::CaseString, String>::new(),
+				content: Vec::<u8>::new(),
+			}
+						}
+						}
+					}
+    }
+}
 
 use std::collections::HashMap;
 use std::env;
@@ -39,7 +60,7 @@ lazy_static! {
     static ref TD_REGEX: Regex = Regex::new(r"</*t(r|h|d)/*?>").unwrap();
 }
 lazy_static! {
-    static ref HOSTNAME_REGEX: Regex = Regex::new(r"://(.*?(\.au|\.com|\.net|\.org)?)/").unwrap();
+    static ref HOSTNAME_REGEX: Regex = Regex::new(r"://(.*?(\.au|\.com|\.net|\.org)?)(:|/)").unwrap();
 }
 
 lazy_static! {
@@ -149,87 +170,27 @@ fn process_warc(warc_number: usize, start_at: usize, finish_at: usize) -> Result
 
         warc.next();
         loop {
-            i += 4;
-            if (i - 4) >= finish_at {
+            
+            if i >= finish_at {
                 info!("no more warc records");
                 break;
-            }
-            if (i - 4) >= start_at && (i - 4) <= finish_at {
+            } else if i <= start_at {
+                //debug!("skipping {}",i);
+                i += 4;
+                warc.next();
+                warc.next();
+                warc.next();
+                warc.next();
+            } else {
+                i += 4;
                 let items: Vec<WarcResult> = [
-					match warc.next() {
-						None => rust_warc::WarcRecord {
-				version: String::from("0"),
-				header: HashMap::<rust_warc::CaseString, String>::new(),
-				/// Record content block
-				content: Vec::<u8>::new(),
-			},
-						Some(w) => {match w {
-						Ok(w) => w,
-						Err(_e) => rust_warc::WarcRecord {
-				version: String::from("0"),
-				header: HashMap::<rust_warc::CaseString, String>::new(),
-				/// Record content block
-				content: Vec::<u8>::new(),
-			}
-						}
-						}
-					},
-				 match warc.next() {
-						None => rust_warc::WarcRecord {
-				version: String::from("0"),
-				header: HashMap::<rust_warc::CaseString, String>::new(),
-				/// Record content block
-				content: Vec::<u8>::new(),
-			},
-						Some(w) => {match w {
-						Ok(w) => w,
-						Err(_e) => rust_warc::WarcRecord {
-				version: String::from("0"),
-				header: HashMap::<rust_warc::CaseString, String>::new(),
-				/// Record content block
-				content: Vec::<u8>::new(),
-			}
-						}
-						}
-					},  match warc.next() {
-						None => rust_warc::WarcRecord {
-				version: String::from("0"),
-				header: HashMap::<rust_warc::CaseString, String>::new(),
-				/// Record content block
-				content: Vec::<u8>::new(),
-			},
-						Some(w) => {match w {
-						Ok(w) => w,
-						Err(_e) => rust_warc::WarcRecord {
-				version: String::from("0"),
-				header: HashMap::<rust_warc::CaseString, String>::new(),
-				/// Record content block
-				content: Vec::<u8>::new(),
-			}
-						}
-						}
-					}, match warc.next() {
-						None => rust_warc::WarcRecord {
-				version: String::from("0"),
-				header: HashMap::<rust_warc::CaseString, String>::new(),
-				/// Record content block
-				content: Vec::<u8>::new(),
-			},
-						Some(w) => {match w {
-						Ok(w) => w,
-						Err(_e) => rust_warc::WarcRecord {
-				version: String::from("0"),
-				header: HashMap::<rust_warc::CaseString, String>::new(),
-				/// Record content block
-				content: Vec::<u8>::new(),
-			}
-						}
-						}
-					},
+                    warc_result!(warc),
+                    warc_result!(warc),
+                    warc_result!(warc),
+                    warc_result!(warc)
 				]
-				.iter()
+				.par_iter()
 				.filter_map(move |item| {
-					i += 1;
 					let warc_record = item;
 					if warc_record.version != "0" && warc_record.header.get(&"WARC-Type".into()) == Some(&"response".into()) {
 						let url = String::from("")
@@ -248,9 +209,9 @@ fn process_warc(warc_number: usize, start_at: usize, finish_at: usize) -> Result
 						Some(caps) => String::from(caps.get(1).unwrap().as_str()),
 						None => String::from(""),
 					};
-
+                        //debug!("regex hs: {}",hostname);
 						if size > 2_000_000 || warc_record.content.len() > 2_000_000 {
-							warn!("{} too big ({} bytes > 2MB) {}", i, size, url);
+							warn!("{}:{} too big {} ({} bytes > 2MB)",warc_number, i, url, size);
 							None
 						}  else if [ "insolvencynotices.asic.gov.au",
 								"data.gov.au",
@@ -319,16 +280,16 @@ fn process_warc(warc_number: usize, start_at: usize, finish_at: usize) -> Result
                         let mut record = Record::new(writer.schema()).unwrap();
                         let url = String::from("") + item.url.as_str();
                         if i % 500 < 5 {
-                            info!("{} {} ({} bytes)", i, url, item.size);
+                            info!("{}:{} {} ({} bytes)", warc_number, i, url, item.size);
                         } else {
-                            debug!("{} {} ({} bytes)", i, url, item.size);
+                            debug!("{}:{} {} ({} bytes)", warc_number, i, url, item.size);
                         }
                         record.put("size_bytes", item.size);
 
                         record.put("source", String::from("") + &warc_filename);
                         match Decoder::new(&item.bytes[..]) {
                             Err(_e) => {
-                                error!("{} {} not valid gzip", i, item.url);
+                                error!("{}:{} {} not valid gzip", warc_number, i, item.url);
                                 return None;
                             }
                             Ok(mut decoder) => {
@@ -337,7 +298,7 @@ fn process_warc(warc_number: usize, start_at: usize, finish_at: usize) -> Result
                                 match decoder.read_to_end(&mut b) {
                                     Ok(_e) => content = String::from_utf8_lossy(&b).to_string(),
                                     Err(_e) => {
-                                        error!("{} {} not valid gzip read", i, item.url);
+                                        error!("{}:{} {} not valid gzip read", warc_number, i, item.url);
                                         return None;
                                     }
                                 }
@@ -433,25 +394,25 @@ fn process_warc(warc_number: usize, start_at: usize, finish_at: usize) -> Result
                                 //debug!("{}",raw_html);
                                 let soup = Soup::new(&raw_html);
                                 let text = parse_html_to_text(&soup);
-                                if text.len() < 10 {
-                                    // match fs::write(
-                                    //     format!("{}-{}.htm", warc_number, i),
-                                    //     &content,
-                                    // ) {
-                                    //     Ok(_e) => error!(
-                                    //     "{}:{} {} has too short text ({} characters)",
-                                    //     warc_number,i,
-                                    //     url, text.len()
-                                    //  ),
-                                    //     Err(_e) =>
+                                if text.len() < 10 && url.matches("pdf").count() == 0 {
+                                //     match fs::write(
+                                //         format!("{}-{}.htm", warc_number, i),
+                                //         &content,
+                                //     ) {
+                                //         Ok(_e) => error!(
+                                //         "{}:{} {} has too short text ({} characters)",
+                                //         warc_number,i,
+                                //         url, text.len()
+                                //      ),
+                                //         Err(_e) =>
                                     error!(
                                         "{}:{} {} has too short text ({} characters)",
                                         warc_number,
                                         i,
                                         url,
                                         text.len()
-                                    )
-                                    // }
+                                     )
+                                //      }
                                 }
                                 let text_words = String::from("") + text.as_str();
                                 match soup.tag("title").find() {
