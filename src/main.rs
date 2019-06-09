@@ -3,23 +3,22 @@ extern crate lazy_static;
 #[macro_export]
 macro_rules! warc_result {
     ($warc: ident ) => {
-					match $warc.next() {
-						None => rust_warc::WarcRecord {
-				version: String::from("0"),
-				header: HashMap::<rust_warc::CaseString, String>::new(),
-				content: Vec::<u8>::new(),
-			},
-						Some(w) => {match w {
-						Ok(w) => w,
-						Err(_e) => rust_warc::WarcRecord {
-				version: String::from("0"),
-				header: HashMap::<rust_warc::CaseString, String>::new(),
-				content: Vec::<u8>::new(),
-			}
-						}
-						}
-					}
-    }
+        match $warc.next() {
+            None => rust_warc::WarcRecord {
+                version: String::from("0"),
+                header: HashMap::<rust_warc::CaseString, String>::new(),
+                content: Vec::<u8>::new(),
+            },
+            Some(w) => match w {
+                Ok(w) => w,
+                Err(_e) => rust_warc::WarcRecord {
+                    version: String::from("0"),
+                    header: HashMap::<rust_warc::CaseString, String>::new(),
+                    content: Vec::<u8>::new(),
+                },
+            },
+        }
+    };
 }
 
 use std::collections::HashMap;
@@ -60,7 +59,8 @@ lazy_static! {
     static ref TD_REGEX: Regex = Regex::new(r"</*t(r|h|d)/*?>").unwrap();
 }
 lazy_static! {
-    static ref HOSTNAME_REGEX: Regex = Regex::new(r"://(.*?(\.au|\.com|\.net|\.org)?)(:|/)").unwrap();
+    static ref HOSTNAME_REGEX: Regex =
+        Regex::new(r"://(.*?(\.au|\.com|\.net|\.org)?)(:|/)").unwrap();
 }
 
 lazy_static! {
@@ -153,10 +153,9 @@ fn process_warc(warc_number: usize, start_at: usize, finish_at: usize) -> Result
         + "-"
         + start_at.to_string().as_str()
         + ".avro";
-    let mut present = false;
-    if check_present_avro(&avro_filename) {
+    let present = if check_present_avro(&avro_filename) {
         warn!("{} already in google storage bucket", &avro_filename);
-        present = true;
+        true
     } else {
         let file = io::BufWriter::new(fs::File::create(&avro_filename).unwrap());
         let mut writer = Writer::new(&SCHEMA, file);
@@ -170,7 +169,6 @@ fn process_warc(warc_number: usize, start_at: usize, finish_at: usize) -> Result
 
         warc.next();
         loop {
-            
             if i >= finish_at {
                 info!("no more warc records");
                 break;
@@ -258,9 +256,9 @@ fn process_warc(warc_number: usize, start_at: usize, finish_at: usize) -> Result
 						None
 						} else {
 							Some(WarcResult {
-								url: url,
-								size: size,
-								hostname: hostname,
+								url,
+								size,
+								hostname,
 								bytes: warc_record.content[..].to_vec(),
 							})
 						}
@@ -290,172 +288,172 @@ fn process_warc(warc_number: usize, start_at: usize, finish_at: usize) -> Result
                         match Decoder::new(&item.bytes[..]) {
                             Err(_e) => {
                                 error!("{}:{} {} not valid gzip", warc_number, i, item.url);
-                                return None;
+                                None
                             }
                             Ok(mut decoder) => {
                                 let mut b = Vec::new();
-                                let mut content: String;
                                 match decoder.read_to_end(&mut b) {
-                                    Ok(_e) => content = String::from_utf8_lossy(&b).to_string(),
                                     Err(_e) => {
                                         error!("{}:{} {} not valid gzip read", warc_number, i, item.url);
-                                        return None;
+                                        return None
+                                    },
+                                    Ok(_e) => {
+                                        let content = String::from_utf8_lossy(&b).to_string();
+                                        let parts: Vec<&str> = content.split("\n\r\n").collect();
+                                        let mut raw_html = BR_REGEX
+                                            .replace_all(&parts[1..parts.len()].join(" "), "")
+                                            .to_string();
+                                        if raw_html.matches('<').count() > 30000 {
+                                            warn!(
+                                                "{}:{} {} contains too many html tags ({})",
+                                                warc_number,
+                                                i,
+                                                url,
+                                                raw_html.matches('<').count()
+                                            );
+                                            // fs::write(
+                                            //     format!("{}-{}.htm", warc_number, i),
+                                            //     &content,
+                                            // )?;
+                                        }
+                                        if raw_html.matches("<a ").count() > 9500 {
+                                            error!(
+                                                "{}:{} {} contains too many <a> tags ({}), fixing",
+                                                warc_number,
+                                                i,
+                                                url,
+                                                raw_html.matches("<a ").count()
+                                            );
+                                            raw_html = A_REGEX.replace_all(&raw_html, "").to_string();
+                                        }
+                                        if raw_html.contains("<p/>")
+                                            && raw_html.matches("<p>").count() > 10000
+                                        {
+                                            error!(
+                                                "{}:{} {} contains too many <p> tags ({}), fixing",
+                                                warc_number,
+                                                i,
+                                                url,
+                                                raw_html.matches("<p>").count()
+                                            );
+                                            raw_html = P_REGEX.replace_all(&raw_html, "").to_string();
+                                        }
+                                        let td_tags = TD_REGEX.find_iter(&raw_html).count();
+                                        if td_tags > 10000 {
+                                            error!(
+                                                    "{}:{} {} contains too many <td>/<tr>/<th> tags ({}), fixing",
+                                                    warc_number,i,
+                                                    url,
+                                                    td_tags
+                                                );
+                                            raw_html = TD_REGEX.replace_all(&raw_html, "").to_string();
+                                        }
+                                        let mut headers = HashMap::<String, String>::new();
+                                        for line in parts[0].split("\n") {
+                                            if line == "" || line.starts_with("HTTP/") {
+                                            } else if line.contains(": ") {
+                                                let parts: Vec<&str> = line.split(": ").collect();
+                                                headers
+                                                    .insert(String::from(parts[0]), String::from(parts[1]));
+                                            }
+                                        }
+
+                                        //debug!("size-b");
+                                        record.put(
+                                            "load_time",
+                                            headers
+                                                .get("X-Funnelback-Total-Request-Time-MS")
+                                                .unwrap_or(&String::from(""))
+                                                .as_str()
+                                                .parse::<f32>()
+                                                .unwrap_or(0.0)
+                                                / 1000.0,
+                                        );
+                                        //debug!("load");
+                                        record.put(
+                                            "hostname",
+                                            headers
+                                                .get("X-Funnelback-AA-Domain")
+                                                .unwrap_or(&item.hostname)
+                                                .as_str(),
+                                        );
+                                        record.put(
+                                            "domain_name",
+                                            DomainName::from_str(&item.hostname.as_str())
+                                                .unwrap()
+                                                .root()
+                                                .to_str(),
+                                        );
+                                        record.put("headers", to_value(headers).unwrap());
+
+                                        //debug!("headers");
+                                        //debug!("{}",raw_html);
+                                        let soup = Soup::new(&raw_html);
+                                        let text = parse_html_to_text(&soup);
+                                        if text.len() < 10 && url.matches("pdf").count() == 0 {
+                                        //     match fs::write(
+                                        //         format!("{}-{}.htm", warc_number, i),
+                                        //         &content,
+                                        //     ) {
+                                        //         Ok(_e) => error!(
+                                        //         "{}:{} {} has too short text ({} characters)",
+                                        //         warc_number,i,
+                                        //         url, text.len()
+                                        //      ),
+                                        //         Err(_e) =>
+                                            error!(
+                                                "{}:{} {} has too short text ({} characters)",
+                                                warc_number,
+                                                i,
+                                                url,
+                                                text.len()
+                                            )
+                                        //      }
+                                        }
+                                        let text_words = String::from("") + text.as_str();
+                                        match soup.tag("title").find() {
+                                            Some(title) => record.put("title", title.text().trim()),
+                                            None => record.put("title", ""),
+                                        }
+                                        //debug!("title");
+                                        record.put("text_content", text);
+                                        //debug!("text-c");
+                                        record.put(
+                                            "word_count",
+                                            text_words.par_split_whitespace().count() as i32,
+                                        );
+                                        //debug!("Wordc");
+                                        match GA_REGEX.captures(&raw_html) {
+                                            Some(caps) => record
+                                                .put("google_analytics", caps.get(0).unwrap().as_str()),
+                                            None => record.put("google_analytics", ""),
+                                        }
+                                        //debug!("ga");
+                                        record.put("headings_text", headings_text(&soup));
+                                        //debug!("headingt");
+                                        record.put(
+                                            "links",
+                                            to_value(
+                                                soup.tag("a")
+                                                    .find_all()
+                                                    .filter_map(|link| link.get("href"))
+                                                    .collect::<Vec<_>>(),
+                                            )
+                                            .unwrap(),
+                                        );
+                                        //debug!("links");
+                                        record
+                                            .put("resource_urls", to_value(resource_urls(&soup)).unwrap());
+                                        //debug!("resource");
+                                        record.put("meta_tags", to_value(meta_tags(&soup)).unwrap());
+                                        //debug!("meta");
+                                        record.put("keywords", keywords(text_words));
+                                        //debug!("keywords");
+                                        //dbg!(record);
+                                        record.put("url", url);
+                                        Some(record)
                                     }
                                 }
-
-                                let parts: Vec<&str> = content.split("\n\r\n").collect();
-                                let mut raw_html = BR_REGEX
-                                    .replace_all(&parts[1..parts.len()].join(" "), "")
-                                    .to_string();
-                                if raw_html.matches("<").count() > 30000 {
-                                    warn!(
-                                        "{}:{} {} contains too many html tags ({})",
-                                        warc_number,
-                                        i,
-                                        url,
-                                        raw_html.matches("<").count()
-                                    );
-                                    // fs::write(
-                                    //     format!("{}-{}.htm", warc_number, i),
-                                    //     &content,
-                                    // )?;
-                                }
-                                if raw_html.matches("<a ").count() > 9500 {
-                                    error!(
-                                        "{}:{} {} contains too many <a> tags ({}), fixing",
-                                        warc_number,
-                                        i,
-                                        url,
-                                        raw_html.matches("<a ").count()
-                                    );
-                                    raw_html = A_REGEX.replace_all(&raw_html, "").to_string();
-                                }
-                                if raw_html.contains("<p/>")
-                                    && raw_html.matches("<p>").count() > 10000
-                                {
-                                    error!(
-                                        "{}:{} {} contains too many <p> tags ({}), fixing",
-                                        warc_number,
-                                        i,
-                                        url,
-                                        raw_html.matches("<p>").count()
-                                    );
-                                    raw_html = P_REGEX.replace_all(&raw_html, "").to_string();
-                                }
-                                let td_tags = TD_REGEX.find_iter(&raw_html).count();
-                                if td_tags > 10000 {
-                                    error!(
-											"{}:{} {} contains too many <td>/<tr>/<th> tags ({}), fixing",
-											warc_number,i,
-											url,
-											td_tags
-										);
-                                    raw_html = TD_REGEX.replace_all(&raw_html, "").to_string();
-                                }
-                                let mut headers = HashMap::<String, String>::new();
-                                for line in parts[0].split("\n") {
-                                    if line == "" || line.starts_with("HTTP/") {
-                                    } else if line.contains(": ") {
-                                        let parts: Vec<&str> = line.split(": ").collect();
-                                        headers
-                                            .insert(String::from(parts[0]), String::from(parts[1]));
-                                    }
-                                }
-
-                                //debug!("size-b");
-                                record.put(
-                                    "load_time",
-                                    headers
-                                        .get("X-Funnelback-Total-Request-Time-MS")
-                                        .unwrap_or(&String::from(""))
-                                        .as_str()
-                                        .parse::<f32>()
-                                        .unwrap_or(0.0)
-                                        / 1000.0,
-                                );
-                                //debug!("load");
-                                record.put(
-                                    "hostname",
-                                    headers
-                                        .get("X-Funnelback-AA-Domain")
-                                        .unwrap_or(&item.hostname)
-                                        .as_str(),
-                                );
-                                record.put(
-                                    "domain_name",
-                                    DomainName::from_str(&item.hostname.as_str())
-                                        .unwrap()
-                                        .root()
-                                        .to_str(),
-                                );
-                                record.put("headers", to_value(headers).unwrap());
-
-                                //debug!("headers");
-                                //debug!("{}",raw_html);
-                                let soup = Soup::new(&raw_html);
-                                let text = parse_html_to_text(&soup);
-                                if text.len() < 10 && url.matches("pdf").count() == 0 {
-                                //     match fs::write(
-                                //         format!("{}-{}.htm", warc_number, i),
-                                //         &content,
-                                //     ) {
-                                //         Ok(_e) => error!(
-                                //         "{}:{} {} has too short text ({} characters)",
-                                //         warc_number,i,
-                                //         url, text.len()
-                                //      ),
-                                //         Err(_e) =>
-                                    error!(
-                                        "{}:{} {} has too short text ({} characters)",
-                                        warc_number,
-                                        i,
-                                        url,
-                                        text.len()
-                                     )
-                                //      }
-                                }
-                                let text_words = String::from("") + text.as_str();
-                                match soup.tag("title").find() {
-                                    Some(title) => record.put("title", title.text().trim()),
-                                    None => record.put("title", ""),
-                                }
-                                //debug!("title");
-                                record.put("text_content", text);
-                                //debug!("text-c");
-                                record.put(
-                                    "word_count",
-                                    text_words.par_split_whitespace().count() as i32,
-                                );
-                                //debug!("Wordc");
-                                match GA_REGEX.captures(&raw_html) {
-                                    Some(caps) => record
-                                        .put("google_analytics", caps.get(0).unwrap().as_str()),
-                                    None => record.put("google_analytics", ""),
-                                }
-                                //debug!("ga");
-                                record.put("headings_text", headings_text(&soup));
-                                //debug!("headingt");
-                                record.put(
-                                    "links",
-                                    to_value(
-                                        soup.tag("a")
-                                            .find_all()
-                                            .filter_map(|link| link.get("href"))
-                                            .collect::<Vec<_>>(),
-                                    )
-                                    .unwrap(),
-                                );
-                                //debug!("links");
-                                record
-                                    .put("resource_urls", to_value(resource_urls(&soup)).unwrap());
-                                //debug!("resource");
-                                record.put("meta_tags", to_value(meta_tags(&soup)).unwrap());
-                                //debug!("meta");
-                                record.put("keywords", keywords(text_words));
-                                //debug!("keywords");
-                                //dbg!(record);
-                                record.put("url", url);
-                                Some(record)
                             }
                         }
                     })
@@ -466,7 +464,9 @@ fn process_warc(warc_number: usize, start_at: usize, finish_at: usize) -> Result
             }
         }
         writer.flush()?;
-    }
+
+        false
+    };
     if !present {
         let upload = Exec::shell("gsutil")
             .arg("cp")
