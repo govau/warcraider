@@ -5,12 +5,36 @@ use std::collections::HashMap;
 use std::fs;
 use std::io;
 use std::path;
+use std::ops::Deref;
 
 use log::{debug, info, warn};
 use rake::*;
 use regex::*;
 use soup::*;
+use quick_xml::Reader;
+use quick_xml::events::Event;
+use quick_xml::events::attributes::Attribute;
 use subprocess::{Exec, ExitStatus};
+
+pub struct HTMLResult  {
+    pub title: String,
+    pub text:Vec<String>,
+    pub headings_text: Vec<String>,
+    pub links: Vec<String>,
+    pub resource_urls: Vec<String>,
+    pub meta_tags:  HashMap<String, String>
+}
+impl HTMLResult {
+    pub fn new() -> HTMLResult {
+    HTMLResult { title: String::from(""),
+           text: Vec::new(),
+headings_text: Vec::new(),
+    links: Vec::new(),
+    resource_urls: Vec::new(),
+    meta_tags:  HashMap::<String, String>::new()
+            }
+}
+}
 lazy_static! {
 static ref URLS : Vec<&'static str> = vec!["","https://data.gov.au/data/dataset/99f43557-1d3d-40e7-bc0c-665a4275d625/resource/75697463-298e-4e98-8e41-b6d364e38e1d/download/dta-report02-1.warc",
 "https://data.gov.au/data/dataset/99f43557-1d3d-40e7-bc0c-665a4275d625/resource/af8159f8-b7e0-4c9b-8086-2b0e5b21cb2c/download/dta-report02-2.warc",
@@ -127,7 +151,123 @@ pub fn download_warc(warc_filename: &str, warc_number: usize) {
         debug!("downloaded");
     }
 }
+pub fn parse_html(raw_html: &str) -> HTMLResult {
+    let mut result = HTMLResult::new();
+    let mut reader = Reader::from_str(raw_html);
+    reader.trim_text(true);
 
+    let mut buf = Vec::new();
+let mut in_body = false;
+let mut in_heading = false;
+let mut in_title = false;
+
+    loop {
+        match reader.read_event(&mut buf) {
+            Ok(Event::Start(ref e)) => {
+                match e.name() {
+                    b"meta" => {
+                        let mut name = String::from("");
+                        let mut value = String::from("");
+                                                 for a in e.attributes() {
+                            match a {
+                                
+                                Ok(Attribute {
+                                    key: b"name",
+                                    value: v,
+                                }) => name=String::from_utf8_lossy(v.deref()).into_owned(),
+                                
+                                Ok(Attribute {
+                                    key: b"http-equiv",
+                                    value: v,
+                                }) => name=String::from_utf8_lossy(v.deref()).into_owned(),
+                                
+                                Ok(Attribute {
+                                    key: b"itemprop",
+                                    value: v,
+                                }) => name=String::from_utf8_lossy(v.deref()).into_owned(),
+                                
+                                Ok(Attribute {
+                                    key: b"property",
+                                    value: v,
+                                }) => name=String::from_utf8_lossy(v.deref()).into_owned(),
+                                Ok(Attribute {
+                                    key: b"content",
+                                    value: v,
+                                }) => value=String::from_utf8_lossy(v.deref()).into_owned(),
+                                _ => (),
+                            }
+                        }
+
+                    if name.len()>0 && value.len()>0 {
+                        result.meta_tags.insert(name,value);
+                    }
+                    }
+                    b"a" => {
+                         for a in e.attributes() {
+                            match a {
+                                Ok(Attribute {
+                                    key: b"href",
+                                    value: v,
+                                }) => result.links.push(String::from_utf8_lossy(v.deref()).into_owned()),
+                                _ => (),
+                            }
+                        }
+                        
+                    }
+                    b"head" | b"noscript" => in_body = false,
+                    b"script" | b"style" | b"link" => {
+                        in_body = false;
+                        for a in e.attributes() {
+                            match a {
+                                Ok(Attribute {
+                                    key: b"src",
+                                    value: v,
+                                }) => result.resource_urls.push(String::from_utf8_lossy(v.deref()).into_owned()),
+                                Ok(Attribute {
+                                    key: b"href",
+                                    value: v,
+                                }) => result.resource_urls.push(String::from_utf8_lossy(v.deref()).into_owned()),
+                     
+                                _ => (),
+                            }
+                        }
+                    }
+                    b"body" => in_body = true,
+                        b"title" => in_title = true,
+                    b"h1" | b"h2" | b"h3" | b"h4" | b"h5" | b"h6"  => in_heading = true,
+                    _ => (),
+                }
+            },
+            Ok(Event::End(ref e)) => {
+                match e.name() {
+                    b"h1" | b"h2" | b"h3" | b"h4" | b"h5" | b"h6"  => in_heading = false,
+                b"head" | b"noscript" | b"script" | b"style" => in_body = true,
+                    b"title" => in_title = false,
+                    _ => (),
+                }
+            },
+            Ok(Event::Text(e)) => {
+                if in_title {
+                    result.title = e.unescape_and_decode(&reader).unwrap();
+                }
+                if in_body {
+                result.text.push(e.unescape_and_decode(&reader).unwrap());
+                if in_heading {
+                    result.headings_text.push(e.unescape_and_decode(&reader).unwrap())
+                }
+                }
+            }
+                ,
+            Ok(Event::Eof) => break, // exits the loop when reaching end of file
+            Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e),
+            _ => (), // There are several other `Event`s we do not consider here
+        }
+
+        // if we don't keep a borrow elsewhere, we can clear the buffer to keep memory usage low
+        buf.clear();
+    }
+    result
+}
 pub fn parse_html_to_text(soup: &Soup) -> String {
     match soup.tag("body").find() {
         Some(body) => WHITESPACE_REGEX

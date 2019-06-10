@@ -47,22 +47,39 @@ lazy_static! {
         Regex::new(r"\bUA-\d{4,10}-\d{1,4}\b|\bGTM-[A-Z0-9]{1,7}\b").unwrap();
 }
 lazy_static! {
-    static ref A_REGEX: Regex = Regex::new(r"</*a *.*?>").unwrap();
+    static ref A_REGEX: Regex = Regex::new(r"</*a.*>").unwrap();
 }
 lazy_static! {
-    static ref P_REGEX: Regex = Regex::new(r"</*p *.*?>").unwrap();
+    static ref U_B_I_REGEX: Regex = Regex::new(r"</*(u|b|i)>").unwrap();
 }
 lazy_static! {
-    static ref BR_REGEX: Regex = Regex::new(r"</*br/*?>").unwrap();
+    static ref P_REGEX: Regex = Regex::new(r"</*p.*>").unwrap();
 }
 lazy_static! {
-    static ref TD_REGEX: Regex = Regex::new(r"</*t(r|h|d)/*?>").unwrap();
+    static ref BR_REGEX: Regex = Regex::new(r"</*br/*>").unwrap();
+}
+lazy_static! {
+    static ref TD_REGEX: Regex = Regex::new(r"</*t(r|h|d)*>").unwrap();
 }
 lazy_static! {
     static ref HOSTNAME_REGEX: Regex =
         Regex::new(r"://(.*?(\.au|\.com|\.net|\.org)?)(:|/)").unwrap();
 }
-
+// lazy_static! {
+//     static ref HTML_REGEX=Regex::new(r"<\/*.*?>").unwrap();
+// }
+// lazy_static! {
+//     static ref HTML_TITLE_REGEX=Regex::new(r"<\/*.*?>").unwrap();
+// }
+// lazy_static! {
+//     static ref HTML_LINK_REGEX=Regex::new(r"<\/*.*?>").unwrap();
+// }
+// lazy_static! {
+//     static ref HTML_RESOURCE_REGEX=Regex::new(r"<\/*.*?>").unwrap();
+// }
+// lazy_static! {
+//     static ref HTML_LINK_REGEX=Regex::new(r"<\/*.*?>").unwrap();
+// }
 lazy_static! {
     static ref SCHEMA: Schema = Schema::parse_str(
         r#"
@@ -251,7 +268,11 @@ fn process_warc(warc_number: usize, start_at: usize, finish_at: usize) -> Result
 					url == "https://www.ncver.edu.au/__data/assets/word_doc/0013/3046/2221s.doc" ||
 					url =="https://www.acma.gov.au/-/media/Broadcast-Carriage-Policy/Information/Word-document/reg_qld-planning_data-docx.docx?la=en" ||
 					url == "https://www.acma.gov.au/-/media/Broadcasting-Spectrum-Planning/Information/Word-Document-Digital-TV/Planning-data-Regional-Queensland-TV1.docx?la=en" ||
-					url.matches("ca91-4-xd").count() > 0 {
+                    url == "https://beta.dva.gov.au/sites/default/files/files/providers/vendor/medvendor1sept2015.xls" ||
+					url == "https://www.ppsr.gov.au/sites/g/files/net3626/f/B2G%20Interface%20Specification%20R4.doc" ||
+                    url == "http://guides.dss.gov.au/sites/default/files/2003_ABSTUDY_Policy_Manual.docx" ||
+                    url == "http://www.nepc.gov.au/system/files/resources/45fee0f3-1266-a944-91d7-3b98439de8f8/files/dve-prepwk-project2-1-diesel-complex-simp-cuedc.xls" ||
+                    url.matches("ca91-4-xd").count() > 0 {
 						warn!("{}:{} bad url {}", warc_number, i, url);
 						None
 						} else {
@@ -273,7 +294,7 @@ fn process_warc(warc_number: usize, start_at: usize, finish_at: usize) -> Result
                 }
 
                 let records: Vec<Record> = items
-                    .par_iter()
+                    .iter()
                     .filter_map(|item| {
                         let mut record = Record::new(writer.schema()).unwrap();
                         let url = String::from("") + item.url.as_str();
@@ -300,54 +321,6 @@ fn process_warc(warc_number: usize, start_at: usize, finish_at: usize) -> Result
                                     Ok(_e) => {
                                         let content = String::from_utf8_lossy(&b).to_string();
                                         let parts: Vec<&str> = content.split("\n\r\n").collect();
-                                        let mut raw_html = BR_REGEX
-                                            .replace_all(&parts[1..parts.len()].join(" "), "")
-                                            .to_string();
-                                        if raw_html.matches('<').count() > 30000 {
-                                            warn!(
-                                                "{}:{} {} contains too many html tags ({})",
-                                                warc_number,
-                                                i,
-                                                url,
-                                                raw_html.matches('<').count()
-                                            );
-                                            // fs::write(
-                                            //     format!("{}-{}.htm", warc_number, i),
-                                            //     &content,
-                                            // )?;
-                                        }
-                                        if raw_html.matches("<a ").count() > 9500 {
-                                            error!(
-                                                "{}:{} {} contains too many <a> tags ({}), fixing",
-                                                warc_number,
-                                                i,
-                                                url,
-                                                raw_html.matches("<a ").count()
-                                            );
-                                            raw_html = A_REGEX.replace_all(&raw_html, "").to_string();
-                                        }
-                                        if raw_html.contains("<p/>")
-                                            && raw_html.matches("<p>").count() > 10000
-                                        {
-                                            error!(
-                                                "{}:{} {} contains too many <p> tags ({}), fixing",
-                                                warc_number,
-                                                i,
-                                                url,
-                                                raw_html.matches("<p>").count()
-                                            );
-                                            raw_html = P_REGEX.replace_all(&raw_html, "").to_string();
-                                        }
-                                        let td_tags = TD_REGEX.find_iter(&raw_html).count();
-                                        if td_tags > 10000 {
-                                            error!(
-                                                    "{}:{} {} contains too many <td>/<tr>/<th> tags ({}), fixing",
-                                                    warc_number,i,
-                                                    url,
-                                                    td_tags
-                                                );
-                                            raw_html = TD_REGEX.replace_all(&raw_html, "").to_string();
-                                        }
                                         let mut headers = HashMap::<String, String>::new();
                                         for line in parts[0].split("\n") {
                                             if line == "" || line.starts_with("HTTP/") {
@@ -385,6 +358,116 @@ fn process_warc(warc_number: usize, start_at: usize, finish_at: usize) -> Result
                                                 .to_str(),
                                         );
                                         record.put("headers", to_value(headers).unwrap());
+                                        let mut raw_html = BR_REGEX
+                                            .replace_all(&parts[1..parts.len()].join(" "), "")
+                                            .to_string();
+                                        match GA_REGEX.captures(&raw_html) {
+                                            Some(caps) => record
+                                                .put("google_analytics", caps.get(0).unwrap().as_str()),
+                                            None => record.put("google_analytics", ""),
+                                        }
+                                        let tag_count = raw_html.matches('<').count();
+                                        if tag_count > 30000 {
+                                            warn!(
+                                                "{}:{} {} contains too many html tags ({}), reducing html parsing",
+                                                warc_number,
+                                                i,
+                                                url,
+                                                raw_html.matches('<').count()
+                                            );
+                                            fs::write(
+                                                format!("{}-{}.htm", warc_number, i),
+                                                &content,
+                                            );
+                                        let html = parse_html(&raw_html);
+                                        let text = html.text.join(" ");
+                                        //debug!("title");
+                                        record.put("text_content", text);
+                                        //debug!("text-c");
+                                        record.put(
+                                            "word_count",
+                                            text.par_split_whitespace().count() as i32,
+                                        );
+                                        //debug!("Wordc");
+
+                                        //debug!("ga");
+                                        record.put("headings_text", html.headings_text.join(" "));
+                                        //debug!("headingt");
+                                        record.put(
+                                            "links",
+                                            to_value(
+                                                html.links
+                                            )
+                                            .unwrap(),
+                                        );
+                                        //debug!("links");
+                                        record
+                                            .put("resource_urls", to_value(html.resource_urls).unwrap());
+                                        //debug!("resource");
+                                        record.put("meta_tags", to_value(html.meta_tags).unwrap());
+                                        //debug!("meta");
+                                        record.put("keywords", keywords(text));
+                                        //debug!("keywords");
+                                        //dbg!(record);
+                                        } else {
+                                            //  if tag_count > 10000 {
+                                            // warn!(
+                                            //     "{}:{} {} contains too many html tags ({}), fixing",
+                                            //     warc_number,
+                                            //     i,
+                                            //     url,
+                                            //     raw_html.matches('<').count()
+                                            // );
+                                            // fs::write(
+                                            //     format!("{}-{}.htm", warc_number, i),
+                                            //     &content,
+                                            // );
+                                            // raw_html = U_B_I_REGEX.replace_all(&raw_html, "").to_string();
+                                            // raw_html = P_REGEX.replace_all(&raw_html, " ").to_string();
+                                            // raw_html = TD_REGEX.replace_all(&raw_html, " ").to_string();
+                                            
+                                            // fs::write(
+                                            //     format!("{}-{}-fixed.htm", warc_number, i),
+                                            //     &raw_html,
+                                            // );
+                                            //  }
+                                            if raw_html.matches("<p>").count() > 1000
+                                            {
+                                                error!(
+                                                    "{}:{} {} contains too many <p> tags ({}), fixing",
+                                                    warc_number,
+                                                    i,
+                                                    url,
+                                                    raw_html.matches("<p>").count()
+                                                );
+                                                raw_html = U_B_I_REGEX.replace_all(&raw_html, "").to_string();
+                                                raw_html = TD_REGEX.replace_all(&raw_html, " ").to_string();
+                                                raw_html = P_REGEX.replace_all(&raw_html, "").to_string();
+                                            }
+                                            let td_tags = TD_REGEX.find_iter(&raw_html).count();
+                                            if td_tags > 1000 {
+                                                error!(
+                                                        "{}:{} {} contains too many <td>/<tr>/<th> tags ({}), fixing",
+                                                        warc_number,i,
+                                                        url,
+                                                        td_tags
+                                                    );
+                                                raw_html = U_B_I_REGEX.replace_all(&raw_html, "").to_string();
+                                                raw_html = P_REGEX.replace_all(&raw_html, " ").to_string();
+                                                raw_html = TD_REGEX.replace_all(&raw_html, "").to_string();
+                                            }
+                                        
+                                        if raw_html.matches("<a ").count() > 1000 {
+                                            error!(
+                                                "{}:{} {} contains too many <a> tags ({}), fixing",
+                                                warc_number,
+                                                i,
+                                                url,
+                                                raw_html.matches("<a ").count()
+                                            );
+                                            raw_html = A_REGEX.replace_all(&raw_html, "").to_string();
+                                        }
+
 
                                         //debug!("headers");
                                         //debug!("{}",raw_html);
@@ -423,11 +506,7 @@ fn process_warc(warc_number: usize, start_at: usize, finish_at: usize) -> Result
                                             text_words.par_split_whitespace().count() as i32,
                                         );
                                         //debug!("Wordc");
-                                        match GA_REGEX.captures(&raw_html) {
-                                            Some(caps) => record
-                                                .put("google_analytics", caps.get(0).unwrap().as_str()),
-                                            None => record.put("google_analytics", ""),
-                                        }
+
                                         //debug!("ga");
                                         record.put("headings_text", headings_text(&soup));
                                         //debug!("headingt");
@@ -450,6 +529,7 @@ fn process_warc(warc_number: usize, start_at: usize, finish_at: usize) -> Result
                                         record.put("keywords", keywords(text_words));
                                         //debug!("keywords");
                                         //dbg!(record);
+                                        }
                                         record.put("url", url);
                                         Some(record)
                                     }
