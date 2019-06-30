@@ -13,13 +13,16 @@ use quick_xml::events::Event;
 use quick_xml::Reader;
 use rake::*;
 use rayon::prelude::*;
+use soup::*;
 use subprocess::{Exec, ExitStatus};
 use url::Url;
+use regex::*;
 #[derive(Debug, Fail)]
 pub enum HTMLError {
     #[fail(display = "invalid html")]
     InvalidHTML {},
 }
+#[derive(Debug)]
 pub struct HTMLResult {
     pub ok: bool,
     pub title: String,
@@ -29,6 +32,7 @@ pub struct HTMLResult {
     pub resource_urls: Vec<String>,
     pub meta_tags: HashMap<String, String>,
 }
+
 impl Default for HTMLResult {
     fn default() -> Self {
         HTMLResult {
@@ -129,7 +133,9 @@ static ref URLS : Vec<&'static str> = vec!["","https://data.gov.au/data/dataset/
 "https://datagovau.s3.ap-southeast-2.amazonaws.com/cd574697-6734-4443-b350-9cf9eae427a2/99f43557-1d3d-40e7-bc0c-665a4275d625/dta-report02-84.warc",
 "https://datagovau.s3.ap-southeast-2.amazonaws.com/cd574697-6734-4443-b350-9cf9eae427a2/99f43557-1d3d-40e7-bc0c-665a4275d625/dta-report02-85.warc"];
 }
-
+lazy_static! {
+    static ref WHITESPACE_REGEX: Regex = Regex::new(r"\s+").unwrap();
+}
 pub fn check_present_avro(avro_filename: &str) -> bool {
     let avro_gcs_status = Exec::shell("gsutil")
         .arg("stat")
@@ -155,11 +161,17 @@ pub fn download_warc(warc_filename: &str, warc_number: usize) {
         debug!("downloaded");
     }
 }
-pub fn parse_html(url: &str, raw_html: &str) -> Result<HTMLResult, HTMLError> {
+pub fn parse_html(
+    url: &str,
+    raw_html: &str,
+    check_end_names: bool,
+) -> Result<HTMLResult, HTMLError> {
     let mut result: HTMLResult = Default::default();
 
     let mut reader = Reader::from_str(raw_html);
     reader.trim_text(true);
+    reader.expand_empty_elements(true);
+    reader.check_end_names(check_end_names);
 
     let mut buf = Vec::new();
     let mut in_body = true;
@@ -248,11 +260,16 @@ pub fn parse_html(url: &str, raw_html: &str) -> Result<HTMLResult, HTMLError> {
                     reader.buffer_position(),
                     e
                 );
-
-                fs::write(
-                    format!("{}-broken.htm", &url.replace(":", "").replace("/", "")),
-                    &raw_html,
-                );
+                if !check_end_names {
+                    fs::write(
+                        format!(
+                            "{}-{}-broken.htm",
+                            &url.replace(":", "").replace("/", ""),
+                            reader.buffer_position()
+                        ),
+                        &raw_html,
+                    );
+                }
                 return Err(HTMLError::InvalidHTML {});
             }
             _ => (), // There are several other `Event`s we do not consider here
@@ -261,7 +278,10 @@ pub fn parse_html(url: &str, raw_html: &str) -> Result<HTMLResult, HTMLError> {
         // if we don't keep a borrow elsewhere, we can clear the buffer to keep memory usage low
         buf.clear();
     }
-    result.ok = true;
+
+    if !raw_html.is_empty() {
+        result.ok = true;
+    }
     Ok(result)
 }
 
@@ -282,15 +302,151 @@ pub fn keywords(text_words: String) -> HashMap<String, f32> {
     );
     keywords
 }
-pub fn make_urls_absolute(url: &str, links: Vec<String>) -> Vec<String> {
+pub fn make_urls_absolute(url: &str, mut links: Vec<String>) -> Vec<String> {
+    links.sort();
+    links.dedup();
     match Url::parse(url) {
         Ok(this_document) => links
             .par_iter()
             .map(move |link| match this_document.join(link) {
-                Ok(link) => link.into_string(),
+                Ok(l) => l.into_string(),
                 Err(_e) => String::from("") + &link,
             })
             .collect(),
         Err(_e) => links,
     }
+}
+
+pub fn parse_html_soup(_url: &str, raw_html: &str) -> Result<HTMLResult, HTMLError> {
+    let mut result: HTMLResult = Default::default();
+    let soup = Soup::new(&raw_html);
+    result.text = vec![parse_soup_to_text(&soup)];
+    result.headings_text = vec![soup_headings_text(&soup)];
+    result.resource_urls = soup_resource_urls(&soup);
+    result.meta_tags = soup_meta_tags(&soup);
+    match soup.tag("title").find() {
+        Some(title) => result.title = String::from(title.text().trim()),
+        None => result.title = String::from(""),
+    }
+
+    result.links = soup
+        .tag("a")
+        .find_all()
+        .filter_map(|link| link.get("href"))
+        .collect::<Vec<_>>();
+
+    if !raw_html.is_empty() {
+        result.ok = true;
+    }
+    dbg!(&result);
+    Ok(result)
+}
+
+pub fn parse_soup_to_text(soup: &Soup) -> String {
+    match soup.tag("body").find() {
+        Some(body) => WHITESPACE_REGEX
+            .replace_all(
+                body.children()
+                    .map(|tag| {
+                        if tag.name() == "script"
+                            || tag.name() == "noscript"
+                            || tag.name() == "style"
+                        {
+                            String::from("")
+                        } else {
+                            tag.text().trim().to_string()
+                        }
+                    })
+                    .collect::<Vec<String>>()
+                    .join("")
+                    .as_str(),
+                " ",
+            )
+            .to_string(),
+        None => String::from(""),
+    }
+}
+
+pub fn soup_headings_text(soup: &Soup) -> String {
+    let mut headings_text = String::new();
+    //let mut i = 0;
+    for heading in vec!["h1", "h2", "h3", "h4", "h5", "h6"].iter() {
+        //debug!("heading {}", *heading);
+        for header in soup.tag(*heading).find_all() {
+            //i += 1;
+            //debug!("heading {} {} {}", *heading, i, header.text());
+            let head_text = header.text();
+            if !head_text.is_empty() {
+                headings_text.push('\n');
+                headings_text.push_str(&head_text);
+            }
+        }
+    }
+    headings_text
+}
+
+pub fn soup_resource_urls(soup: &Soup) -> Vec<String> {
+    let mut resource_urls: Vec<String> = [
+        soup.tag("script")
+            .find_all()
+            .filter_map(|link| link.get("src"))
+            .collect::<Vec<String>>(),
+        soup.tag("link")
+            .find_all()
+            .filter_map(|link| link.get("href"))
+            .collect::<Vec<String>>(),
+        soup.tag("img")
+            .find_all()
+            .filter_map(|link| link.get("src"))
+            .collect::<Vec<String>>(),
+    ]
+    .concat();
+    resource_urls.sort();
+    resource_urls.dedup();
+    resource_urls
+}
+
+pub fn soup_meta_tags(soup: &Soup) -> HashMap<String, String> {
+    let mut meta_tags = HashMap::<String, String>::new();
+    soup.tag("meta").find_all().for_each(|meta| {
+        let attrs = meta.attrs();
+        if attrs.contains_key("name") {
+            match attrs.get("content") {
+                Some(i) => meta_tags.insert(attrs.get("name").unwrap().to_string(), i.to_string()),
+                None => Some(String::from("?")),
+            };
+        } else if attrs.contains_key("http-equiv") {
+            //If http-equiv is set, it is a pragma directive — information normally given by the web server about how the web page is served.
+            match attrs.get("content") {
+                Some(i) => {
+                    meta_tags.insert(attrs.get("http-equiv").unwrap().to_string(), i.to_string())
+                }
+                None => Some(String::from("?")),
+            };
+        } else if attrs.contains_key("charset") {
+            //If charset is set, it is a charset declaration — the character encoding used by the webpage.
+            meta_tags.insert(
+                String::from("charset"),
+                attrs.get("charset").unwrap().to_string(),
+            );
+        } else if attrs.contains_key("itemprop") {
+            //If itemprop is set, it is user-defined metadata — transparent for the user-agent as the semantics of the metadata is user-specific.
+            match attrs.get("content") {
+                Some(i) => {
+                    meta_tags.insert(attrs.get("itemprop").unwrap().to_string(), i.to_string())
+                }
+                None => Some(String::from("?")),
+            };
+        } else if attrs.contains_key("property") {
+            //facebook open graph
+
+            match attrs.get("content") {
+                Some(i) => {
+                    meta_tags.insert(attrs.get("property").unwrap().to_string(), i.to_string())
+                }
+                None => Some(String::from("?")),
+            };
+        }
+    });
+    meta_tags
 }

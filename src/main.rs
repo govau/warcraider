@@ -136,7 +136,7 @@ fn main() -> Result<(), Error> {
 
 fn process_warc(warc_number: usize, start_at: usize, finish_at: usize) -> Result<(), Error> {
     let mut i = 0;
-    let add_tags = vec!["script", "html","head", "body", "title", "meta", "link"];
+    let add_tags = vec!["script", "html", "head", "body", "title", "meta", "link"];
     let rm_tags = vec![
         "abbr",
         "acronym",
@@ -220,12 +220,14 @@ fn process_warc(warc_number: usize, start_at: usize, finish_at: usize) -> Result
     attr.insert("http-equiv");
     attr.insert("itemprop");
     attr.insert("property");
+
     let mut cleaner = Builder::new();
     cleaner
         .add_tags(add_tags)
-        .rm_tags(rm_tags)
+        .rm_tags(&rm_tags)
         .clean_content_tags(cct)
         .generic_attributes(attr);
+
     let avro_filename = String::from("")
         + "dta-report02-"
         + warc_number.to_string().as_str()
@@ -426,11 +428,11 @@ fn process_warc(warc_number: usize, start_at: usize, finish_at: usize) -> Result
                                         );
                                         record.put("headers", to_value(headers).unwrap());
 
-                                        let mut raw_html = cleaner
-                                            .clean(&parts[1..parts.len()].join(" "))
-                                            .to_string();
-                                        fs::write(format!("{}-{}.htm", warc_number, i),&parts[1..parts.len()].join(" "));
-                                        fs::write(format!("{}-{}-clean.htm", warc_number, i),&raw_html);
+                                        let raw_html = &parts[1..parts.len()].join(" ");
+                                        let clean_html = cleaner.clean(raw_html).to_string();
+
+                                        // fs::write(format!("{}-{}.htm", warc_number, i),&parts[1..parts.len()].join(" "));
+                                        // fs::write(format!("{}-{}-clean.htm", warc_number, i),&raw_html);
                                         match GA_REGEX.captures(&raw_html) {
                                             Some(caps) => record.put(
                                                 "google_analytics",
@@ -453,7 +455,7 @@ fn process_warc(warc_number: usize, start_at: usize, finish_at: usize) -> Result
                                         //     );
                                         // }
                                         let html;
-                                        match parse_html(&url, &raw_html) {
+                                        match parse_html(&url, &clean_html, true) {
                                             Ok(h) => html = h,
                                             Err(_e) => {
                                                 warn!(
@@ -463,18 +465,39 @@ fn process_warc(warc_number: usize, start_at: usize, finish_at: usize) -> Result
                                                 // download tidy from https://github.com/htacg/tidy-html5/releases
                                                 let tidy = Exec::cmd("tidy")
                                                     .arg("-q")
+                                                    .arg("--show-errors=0")
+                                                    .arg("--wrap=0")
+                                                    .arg("--vertical-space=auto")
                                                     .stdin(raw_html.as_str())
                                                     .stdout(Redirection::Pipe)
                                                     .stdout(Redirection::Pipe)
                                                     .capture()
                                                     .unwrap();
                                                 let tidy_html = tidy.stdout_str();
+                                                // fs::write(format!("{}-{}-tidy.htm", warc_number, i),&tidy_html);
+                                                let tidy_clean_html =
+                                                    cleaner.clean(&tidy_html).to_string();
+
                                                 // let tidy_err = tidy.stderr_str();
                                                 // debug!("{}",tidy_err);
-                                                raw_html = tidy_html;
-                                                match parse_html(&url, &raw_html) {
+
+                                                //    fs::write(format!("{}-{}-tidyf.htm", warc_number, i),&tidy_clean_html);
+
+                                                match parse_html(&url, &tidy_clean_html, false) {
                                                     Ok(h) => html = h,
-                                                    Err(_e) => html = Default::default(),
+                                                    Err(_e) => {
+                                                        warn!(
+                                                            "{}:{} {} falling back to html soup",
+                                                            warc_number, i, url
+                                                        );
+                                                        match parse_html_soup(
+                                                            &url,
+                                                            &tidy_clean_html,
+                                                        ) {
+                                                            Ok(h) => html = h,
+                                                            Err(_e) => html = Default::default(),
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
@@ -519,7 +542,6 @@ fn process_warc(warc_number: usize, start_at: usize, finish_at: usize) -> Result
                                             );
                                             record.put("text_content", text);
                                             //debug!("keywords");
-                                            
 
                                             record.put("url", url);
                                             //dbg!(&record);
@@ -529,6 +551,10 @@ fn process_warc(warc_number: usize, start_at: usize, finish_at: usize) -> Result
                                             error!(
                                                 "{}:{} {} html still failed",
                                                 warc_number, i, url
+                                            );
+                                            fs::write(
+                                                format!("{}-{}-failed.htm", warc_number, i),
+                                                &parts[1..parts.len()].join(" "),
                                             );
                                             None
                                         }
