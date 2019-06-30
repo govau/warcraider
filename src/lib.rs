@@ -258,7 +258,7 @@ pub fn parse_html(
             }
             Ok(Event::Eof) => break, // exits the loop when reaching end of file
             Err(e) => {
-                error!(
+                warn!(
                     "Error {} at position {}: {:?}",
                     url,
                     reader.buffer_position(),
@@ -341,7 +341,7 @@ pub fn parse_html_soup(url: &str, raw_html: &str) -> Result<HTMLResult, HTMLErro
         .filter_map(|link| link.get("href"))
         .collect::<Vec<_>>();
 
-    dbg!(&result);
+    //dbg!(&result);
     result.ok = true;
     Ok(result)
 }

@@ -238,7 +238,7 @@ fn process_warc(warc_number: usize, start_at: usize, finish_at: usize) -> Result
         warn!("{} already in google storage bucket", &avro_filename);
         true
     } else {
-        let file = io::BufWriter::new(fs::File::create(&avro_filename).unwrap());
+        let file = io::BufWriter::with_capacity(256 * 1024, fs::File::create(&avro_filename).unwrap());
         let mut writer = Writer::new(&SCHEMA, file);
         let warc_filename =
             String::from("") + "dta-report02-" + warc_number.to_string().as_str() + ".warc";
@@ -268,7 +268,7 @@ fn process_warc(warc_number: usize, start_at: usize, finish_at: usize) -> Result
                     warc_result!(warc),
                     warc_result!(warc)
 				]
-				.iter()
+				.par_iter()
 				.filter_map(move |item| {
 					let warc_record = item;
 					if warc_record.version != "0" && warc_record.header.get(&"WARC-Type".into()) == Some(&"response".into()) {
@@ -358,7 +358,7 @@ fn process_warc(warc_number: usize, start_at: usize, finish_at: usize) -> Result
                 }
 
                 let records: Vec<Record> = items
-                    .iter()
+                    .par_iter()
                     .filter_map(|item| {
                         let mut record = Record::new(writer.schema()).unwrap();
                         let url = String::from("") + item.url.as_str();
@@ -458,7 +458,7 @@ fn process_warc(warc_number: usize, start_at: usize, finish_at: usize) -> Result
                                         match parse_html(&url, &clean_html, true) {
                                             Ok(h) => html = h,
                                             Err(_e) => {
-                                                warn!(
+                                                debug!(
                                                     "{}:{} {} tidying up html",
                                                     warc_number, i, url
                                                 );
@@ -466,11 +466,12 @@ fn process_warc(warc_number: usize, start_at: usize, finish_at: usize) -> Result
                                                 let tidy = Exec::cmd("tidy")
                                                     .arg("-q")
                                                     .arg("--show-errors=0")
+                                                    .arg("--show-info=no")
                                                     .arg("--wrap=0")
                                                     .arg("--vertical-space=auto")
                                                     .stdin(raw_html.as_str())
                                                     .stdout(Redirection::Pipe)
-                                                    .stdout(Redirection::Pipe)
+                                                    .stderr(Redirection::Pipe)
                                                     .capture()
                                                     .unwrap();
                                                 let tidy_html = tidy.stdout_str();
@@ -478,8 +479,8 @@ fn process_warc(warc_number: usize, start_at: usize, finish_at: usize) -> Result
                                                 let tidy_clean_html =
                                                     cleaner.clean(&tidy_html).to_string();
 
-                                                // let tidy_err = tidy.stderr_str();
-                                                // debug!("{}",tidy_err);
+                                                //  let tidy_err = tidy.stderr_str();
+                                                //  debug!("{}",tidy_err);
 
                                                 //    fs::write(format!("{}-{}-tidyf.htm", warc_number, i),&tidy_clean_html);
 
@@ -504,7 +505,13 @@ fn process_warc(warc_number: usize, start_at: usize, finish_at: usize) -> Result
                                                             &url,
                                                             &clean_html,
                                                         ) {
-                                                            Ok(h) => html = h,
+                                                            Ok(h) => {
+                                                                debug!(
+                                                            "{}:{} {} fall back to html soup worked",
+                                                            warc_number, i, url
+                                                        );
+                                                                html = h
+                                                            },
                                                             Err(_e) => html = Default::default(),
                                                         }
                                                     }
