@@ -486,13 +486,23 @@ fn process_warc(warc_number: usize, start_at: usize, finish_at: usize) -> Result
                                                 match parse_html(&url, &tidy_clean_html, false) {
                                                     Ok(h) => html = h,
                                                     Err(_e) => {
+                                                          let tag_count = raw_html.matches('<').count();
+                                        if tag_count > 3000 {
+                                            warn!(
+                                                "{}:{} {} contains too many html tags ({})",
+                                                warc_number,
+                                                i,
+                                                url,
+                                                raw_html.matches('<').count()
+                                            );
+                                        }
                                                         warn!(
                                                             "{}:{} {} falling back to html soup",
                                                             warc_number, i, url
                                                         );
                                                         match parse_html_soup(
                                                             &url,
-                                                            &tidy_clean_html,
+                                                            &clean_html,
                                                         ) {
                                                             Ok(h) => html = h,
                                                             Err(_e) => html = Default::default(),

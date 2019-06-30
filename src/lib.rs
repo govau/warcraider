@@ -166,6 +166,10 @@ pub fn parse_html(
     raw_html: &str,
     check_end_names: bool,
 ) -> Result<HTMLResult, HTMLError> {
+    if raw_html.is_empty() {
+        error!("{} can't parse empty html", url);
+        return Err(HTMLError::InvalidHTML {});
+    }
     let mut result: HTMLResult = Default::default();
 
     let mut reader = Reader::from_str(raw_html);
@@ -279,9 +283,7 @@ pub fn parse_html(
         buf.clear();
     }
 
-    if !raw_html.is_empty() {
-        result.ok = true;
-    }
+    result.ok = true;
     Ok(result)
 }
 
@@ -317,7 +319,11 @@ pub fn make_urls_absolute(url: &str, mut links: Vec<String>) -> Vec<String> {
     }
 }
 
-pub fn parse_html_soup(_url: &str, raw_html: &str) -> Result<HTMLResult, HTMLError> {
+pub fn parse_html_soup(url: &str, raw_html: &str) -> Result<HTMLResult, HTMLError> {
+        if raw_html.is_empty() {
+        error!("{} can't parse empty html", url);
+        return Err(HTMLError::InvalidHTML {});
+    }
     let mut result: HTMLResult = Default::default();
     let soup = Soup::new(&raw_html);
     result.text = vec![parse_soup_to_text(&soup)];
@@ -335,10 +341,8 @@ pub fn parse_html_soup(_url: &str, raw_html: &str) -> Result<HTMLResult, HTMLErr
         .filter_map(|link| link.get("href"))
         .collect::<Vec<_>>();
 
-    if !raw_html.is_empty() {
-        result.ok = true;
-    }
     dbg!(&result);
+    result.ok = true;
     Ok(result)
 }
 
@@ -358,7 +362,7 @@ pub fn parse_soup_to_text(soup: &Soup) -> String {
                         }
                     })
                     .collect::<Vec<String>>()
-                    .join("")
+                    .join(" ")
                     .as_str(),
                 " ",
             )
@@ -377,12 +381,12 @@ pub fn soup_headings_text(soup: &Soup) -> String {
             //debug!("heading {} {} {}", *heading, i, header.text());
             let head_text = header.text();
             if !head_text.is_empty() {
-                headings_text.push('\n');
+                headings_text.push_str("\n ");
                 headings_text.push_str(&head_text);
             }
         }
     }
-    headings_text
+    String::from(headings_text.trim())
 }
 
 pub fn soup_resource_urls(soup: &Soup) -> Vec<String> {
