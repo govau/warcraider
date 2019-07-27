@@ -1,5 +1,5 @@
 # select build image
-FROM rust:1.35 as build
+FROM rust:1.36 as build
 
 # create a new empty shell project
 RUN USER=root cargo new --bin warcraider
@@ -21,7 +21,10 @@ RUN rm ./target/release/deps/warcraider*
 RUN RUSTFLAGS="-C target-cpu=native -C link-args=-Wl,-zstack-size=4194304" cargo build --release
 
 # our final base
-FROM google/cloud-sdk:alpine
+FROM google/cloud-sdk:latest
+
+# install dependencies
+RUN apt-get install -y tidy
 
 # copy the build artifact from the build stage
 COPY --from=build /warcraider/target/release/warcraider .

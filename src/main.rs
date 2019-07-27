@@ -65,7 +65,6 @@ lazy_static! {
 		{"name": "size_bytes", "type": "int"},
 		{"name": "load_time", "type": "float"},
 		{"name": "title", "type": "string"},
-		{"name": "google_analytics", "type": "string"},
 		{"name": "text_content", "type": "string"},
 		{"name": "headings_text", "type": "string"},
 		{"name": "word_count", "type": "int"},
@@ -74,6 +73,8 @@ lazy_static! {
 		{"name": "keywords", "type": {"type": "map", "values": "float"}},
 		{"name": "meta_tags", "type": {"type": "map", "values": "string"}},
 		{"name": "headers", "type": {"type": "map", "values": "string"}},
+        {"name": "google_analytics", "type": "string"},
+        {"name": "html_errors", "type": "string"},
 		{"name": "source", "type": "string"}
 	]
 		}
@@ -89,13 +90,19 @@ struct WarcResult {
     bytes: Vec<u8>,
 }
 fn main() -> Result<(), Error> {
+    #[cfg(target_os = "windows")]
     env_logger::init();
-    //stackdriver_logger::init_with_cargo!();
+    #[cfg(not(target_os = "windows"))]
+    stackdriver_logger::init_with_cargo!();
+    
     info!(
         "warcraider version {} working dir {}",
         git_version!(),
         env::current_dir()?.display()
     );
+
+    let tidy = Exec::cmd("tidy").arg("-V").stdout(Redirection::Pipe).stderr(Redirection::Pipe).capture().unwrap();
+    info!("tidy version: {}",tidy.stdout_str());
 
     let mut warc_number: usize = 0;
     let mut replica: usize;
@@ -118,8 +125,8 @@ fn main() -> Result<(), Error> {
         Err(_e) => warc_number += 0,
     }
 
-    while warc_number <= 85 {
-        if warc_number == 59 {
+    while warc_number <= 95 {
+        if warc_number == 99 {
             warn!("404 not found");
             warc_number += replicas;
         } else {
@@ -229,7 +236,7 @@ fn process_warc(warc_number: usize, start_at: usize, finish_at: usize) -> Result
         .generic_attributes(attr);
 
     let avro_filename = String::from("")
-        + "dta-report02-"
+        + "dta-report04-"
         + warc_number.to_string().as_str()
         + "-"
         + start_at.to_string().as_str()
@@ -330,7 +337,7 @@ fn process_warc(warc_number: usize, start_at: usize, finish_at: usize) -> Result
 					].contains(&hostname.as_str()) ||
 					url == "http://www.nepc.gov.au/system/files/resources/45fee0f3-1266-a944-91d7-3b98439de8f8/files/dve-prepwk-project2-1-diesel-complex-cuedc.xls" ||
 					url == "https://www.ncver.edu.au/__data/assets/word_doc/0013/3046/2221s.doc" ||
-					url =="https://www.acma.gov.au/-/media/Broadcast-Carriage-Policy/Information/Word-document/reg_qld-planning_data-docx.docx?la=en" ||
+					url == "https://www.acma.gov.au/-/media/Broadcast-Carriage-Policy/Information/Word-document/reg_qld-planning_data-docx.docx?la=en" ||
 					url == "https://www.acma.gov.au/-/media/Broadcasting-Spectrum-Planning/Information/Word-Document-Digital-TV/Planning-data-Regional-Queensland-TV1.docx?la=en" ||
                     url == "https://beta.dva.gov.au/sites/default/files/files/providers/vendor/medvendor1sept2015.xls" ||
 					url == "https://www.ppsr.gov.au/sites/g/files/net3626/f/B2G%20Interface%20Specification%20R4.doc" ||
@@ -456,7 +463,10 @@ fn process_warc(warc_number: usize, start_at: usize, finish_at: usize) -> Result
                                         // }
                                         let html;
                                         match parse_html(&url, &clean_html, true) {
-                                            Ok(h) => html = h,
+                                            Ok(h) => {
+                                                html = h;
+                                                record.put("html_errors", "");
+                                            },
                                             Err(_e) => {
                                                 debug!(
                                                     "{}:{} {} tidying up html",
@@ -479,8 +489,9 @@ fn process_warc(warc_number: usize, start_at: usize, finish_at: usize) -> Result
                                                 let tidy_clean_html =
                                                     cleaner.clean(&tidy_html).to_string();
 
-                                                //  let tidy_err = tidy.stderr_str();
-                                                //  debug!("{}",tidy_err);
+                                                let tidy_err = tidy.stderr_str();
+                                                debug!("html errors: {}",tidy_err);
+                                                record.put("html_errors", tidy_err);
 
                                                 //    fs::write(format!("{}-{}-tidyf.htm", warc_number, i),&tidy_clean_html);
 

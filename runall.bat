@@ -1,4 +1,6 @@
+SET RUSTFLAGS=-C target-cpu=native -C link-args=/STACK:4194304
 cargo build --release
+
 start /affinity 3 run.bat 1
 start /affinity C run.bat 2
 start /affinity 30 run.bat 3
