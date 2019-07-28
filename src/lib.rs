@@ -180,14 +180,24 @@ pub fn parse_html(
                     e
                 );
                 if !check_end_names {
-                    fs::write(
+                    match fs::write(
                         format!(
                             "{}-{}-broken.htm",
                             &url.replace(":", "").replace("/", ""),
                             reader.buffer_position()
                         ),
                         &raw_html,
-                    );
+                    ) {
+                        Err(_e) => error!(
+                            "error writing {}",
+                            format!(
+                                "{}-{}-broken.htm",
+                                &url.replace(":", "").replace("/", ""),
+                                reader.buffer_position()
+                            )
+                        ),
+                        Ok(_) => {}
+                    }
                 }
                 return Err(HTMLError::InvalidHTML {});
             }
