@@ -94,17 +94,27 @@ fn main() -> Result<(), Error> {
     env_logger::init();
     #[cfg(not(target_os = "windows"))]
     stackdriver_logger::init_with_cargo!();
-    
+
     info!(
         "warcraider version {} working dir {}",
         git_version!(),
         env::current_dir()?.display()
     );
 
-    let tidy = Exec::cmd("tidy").arg("-V").stdout(Redirection::Pipe).stderr(Redirection::Pipe).capture().unwrap();
-    info!("tidy version: {}",tidy.stdout_str());
+    let tidy = Exec::cmd("tidy")
+        .arg("-V")
+        .stdout(Redirection::Pipe)
+        .stderr(Redirection::Pipe)
+        .capture()
+        .unwrap();
+    info!("tidy version: {}", tidy.stdout_str());
 
     let mut warc_number: usize = 0;
+    let mut report_number: usize;
+    match env::var("REPORT_NUMBER") {
+        Ok(val) => report_number = val.parse::<usize>().unwrap(),
+        Err(_e) => report_number = 4,
+    }
     let mut replica: usize;
     match env::var("REPLICA") {
         Ok(val) => replica = val.parse::<usize>().unwrap(),
@@ -131,8 +141,8 @@ fn main() -> Result<(), Error> {
             warc_number += replicas;
         } else {
             info!("processing warc {}", warc_number);
-            process_warc(warc_number, 0, 50_000)?;
-            process_warc(warc_number, 50_000, 100_000)?;
+            process_warc(report_number, warc_number, 0, 50_000)?;
+            process_warc(report_number, warc_number, 50_000, 100_000)?;
 
             warc_number += replicas;
         }
@@ -141,7 +151,7 @@ fn main() -> Result<(), Error> {
     Ok(())
 }
 
-fn process_warc(warc_number: usize, start_at: usize, finish_at: usize) -> Result<(), Error> {
+fn process_warc(report_number: usize, warc_number: usize, start_at: usize, finish_at: usize) -> Result<(), Error> {
     let mut i = 0;
     let add_tags = vec!["script", "html", "head", "body", "title", "meta", "link"];
     let rm_tags = vec![
@@ -236,7 +246,9 @@ fn process_warc(warc_number: usize, start_at: usize, finish_at: usize) -> Result
         .generic_attributes(attr);
 
     let avro_filename = String::from("")
-        + "dta-report04-"
+        + "dta-report0"
+        + report_number.to_string().as_str()
+        + "-"
         + warc_number.to_string().as_str()
         + "-"
         + start_at.to_string().as_str()
@@ -245,11 +257,12 @@ fn process_warc(warc_number: usize, start_at: usize, finish_at: usize) -> Result
         warn!("{} already in google storage bucket", &avro_filename);
         true
     } else {
-        let file = io::BufWriter::with_capacity(256 * 1024, fs::File::create(&avro_filename).unwrap());
+        let file =
+            io::BufWriter::with_capacity(256 * 1024, fs::File::create(&avro_filename).unwrap());
         let mut writer = Writer::new(&SCHEMA, file);
         let warc_filename =
             String::from("") + "dta-report02-" + warc_number.to_string().as_str() + ".warc";
-        download_warc(&warc_filename, warc_number);
+        download_warc(&warc_filename, report_number, warc_number);
         let f = fs::File::open(&warc_filename).expect("Unable to open file");
         let br = io::BufReader::new(f);
 

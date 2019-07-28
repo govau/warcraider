@@ -13,10 +13,10 @@ use quick_xml::events::Event;
 use quick_xml::Reader;
 use rake::*;
 use rayon::prelude::*;
+use regex::*;
 use soup::*;
 use subprocess::{Exec, ExitStatus};
 use url::Url;
-use regex::*;
 #[derive(Debug, Fail)]
 pub enum HTMLError {
     #[fail(display = "invalid html")]
@@ -66,9 +66,9 @@ pub fn check_present_avro(avro_filename: &str) -> bool {
     }
 }
 
-pub fn download_warc(warc_filename: &str, warc_number: usize) {
+pub fn download_warc(warc_filename: &str, report_number: usize, warc_number: usize) {
     if !path::Path::new(&warc_filename).exists() {
-        let url = format!("https://datagovau.s3.ap-southeast-2.amazonaws.com/cd574697-6734-4443-b350-9cf9eae427a2/99f43557-1d3d-40e7-bc0c-665a4275d625/dta-report04-{}.warc",warc_number);
+        let url = format!("https://datagovau.s3.ap-southeast-2.amazonaws.com/cd574697-6734-4443-b350-9cf9eae427a2/99f43557-1d3d-40e7-bc0c-665a4275d625/dta-report0{}-{}.warc",report_number, warc_number);
         info!("starting download: {}", url);
         let mut response = chttp::get(url).unwrap();
         let mut dest = fs::File::create(&warc_filename).unwrap();
@@ -235,7 +235,7 @@ pub fn make_urls_absolute(url: &str, mut links: Vec<String>) -> Vec<String> {
 }
 
 pub fn parse_html_soup(url: &str, raw_html: &str) -> Result<HTMLResult, HTMLError> {
-        if raw_html.is_empty() {
+    if raw_html.is_empty() {
         error!("{} can't parse empty html", url);
         return Err(HTMLError::InvalidHTML {});
     }
