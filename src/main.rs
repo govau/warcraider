@@ -39,9 +39,9 @@ use log::{debug, error, info, warn};
 use rayon::prelude::*;
 use regex::*;
 use rust_warc::WarcReader;
+#[cfg(not(target_os = "windows"))]
+use stackdriver_logger;
 use subprocess::{Exec, Redirection};
-//use stackdriver_logger;
-use ammonia::Builder;
 
 lazy_static! {
     static ref GA_REGEX: Regex =
@@ -185,97 +185,6 @@ fn process_warc(
     finish_at: usize,
 ) -> Result<(), Error> {
     let mut i = 0;
-    let add_tags = vec!["script", "html", "head", "body", "title", "meta", "link"];
-    let rm_tags = vec![
-        "abbr",
-        "acronym",
-        "area",
-        "article",
-        "aside",
-        "b",
-        "bdi",
-        "bdo",
-        "blockquote",
-        "br",
-        "caption",
-        "center",
-        "cite",
-        "code",
-        "col",
-        "colgroup",
-        "data",
-        "dd",
-        "del",
-        "details",
-        "dfn",
-        "div",
-        "dl",
-        "dt",
-        "em",
-        "figcaption",
-        "figure",
-        "footer",
-        "header",
-        "hgroup",
-        "hr",
-        "i",
-        "img",
-        "ins",
-        "kbd",
-        "kbd",
-        "li",
-        "map",
-        "mark",
-        "nav",
-        "ol",
-        "p",
-        "pre",
-        "q",
-        "rp",
-        "rt",
-        "rtc",
-        "ruby",
-        "s",
-        "samp",
-        "small",
-        "span",
-        "strike",
-        "strong",
-        "sub",
-        "summary",
-        "sup",
-        "table",
-        "tbody",
-        "td",
-        "th",
-        "thead",
-        "time",
-        "tr",
-        "tt",
-        "u",
-        "ul",
-        "var",
-        "wbr",
-    ];
-    let mut cct = std::collections::HashSet::new();
-    cct.insert("style");
-    cct.insert("noscript");
-    cct.insert("noframes");
-    let mut attr = std::collections::HashSet::new();
-    attr.insert("src");
-    attr.insert("href");
-    attr.insert("name");
-    attr.insert("content");
-    attr.insert("http-equiv");
-    attr.insert("itemprop");
-    attr.insert("property");
-
-    let mut cleaner = Builder::new();
-    cleaner
-        .add_tags(add_tags)
-        .rm_tags(&rm_tags)
-        .clean_content_tags(cct)
-        .generic_attributes(attr);
 
     let avro_filename = String::from("")
         + "dta-report0"
@@ -441,7 +350,7 @@ fn process_warc(
                                         let content = String::from_utf8_lossy(&b).to_string();
                                         let parts: Vec<&str> = content.split("\n\r\n").collect();
                                         let mut headers = HashMap::<String, String>::new();
-                                        for line in parts[0].split("\n") {
+                                        for line in parts[0].split('\n') {
                                             if line == "" || line.starts_with("HTTP/") {
                                             } else if line.contains(": ") {
                                                 let parts: Vec<&str> = line.split(": ").collect();
@@ -481,95 +390,39 @@ fn process_warc(
                                         record.put("headers", to_value(headers).unwrap());
 
                                         let raw_html = &parts[1..parts.len()].join(" ");
-                                        let clean_html = cleaner.clean(raw_html).to_string();
+
                                         record.put(
-                                                "google_analytics",
-                                                to_value(
-                                                    GA_REGEX.captures_iter(&raw_html).map(
-                                                        |cap| String::from(cap.get(0).unwrap().as_str()))
-                                                        .collect::<Vec<String>>())
-                                                        .unwrap()
+                                            "google_analytics",
+                                            to_value(
+                                                GA_REGEX
+                                                    .captures_iter(&raw_html)
+                                                    .map(|cap| {
+                                                        String::from(cap.get(0).unwrap().as_str())
+                                                    })
+                                                    .collect::<Vec<String>>(),
+                                            )
+                                            .unwrap(),
                                         );
-                                        record.put("google_analytics_config", to_value(Vec::<String>::new()).unwrap());
-                                        let html;
-                                        match parse_html(&url, &clean_html, true) {
-                                            Ok(h) => {
-                                                html = h;
-                                                record.put("html_errors", "");
-                                            },
-                                            Err(_e) => {
-                                                debug!(
-                                                    "{}:{} {} tidying up html",
-                                                    warc_number, i, url
-                                                );
-                                                // download tidy from https://github.com/htacg/tidy-html5/releases
-                                                let tidy = Exec::cmd("tidy")
-                                                    .arg("-q")
-                                                    .arg("--show-errors=0")
-                                                    .arg("--show-info=no")
-                                                    .arg("--wrap=0")
-                                                    .arg("--vertical-space=auto")
-                                                    .stdin(raw_html.as_str())
-                                                    .stdout(Redirection::Pipe)
-                                                    .stderr(Redirection::Pipe)
-                                                    .capture()
-                                                    .unwrap();
-                                                let tidy_html = tidy.stdout_str();
-                                                // fs::write(format!("{}-{}-tidy.htm", warc_number, i),&tidy_html);
-                                                let tidy_clean_html =
-                                                    cleaner.clean(&tidy_html).to_string();
+                                        record.put(
+                                            "google_analytics_config",
+                                            to_value(Vec::<String>::new()).unwrap(),
+                                        );
+                                        let html =
+                                            find_html_parser(warc_number, i, &url, &raw_html);
 
-                                                let tidy_err = tidy.stderr_str();
-                                                debug!("html errors: {}",tidy_err);
-                                                record.put("html_errors", tidy_err);
-
-                                                //    fs::write(format!("{}-{}-tidyf.htm", warc_number, i),&tidy_clean_html);
-
-                                                match parse_html(&url, &tidy_clean_html, false) {
-                                                    Ok(h) => html = h,
-                                                    Err(_e) => {
-                                                        let tag_count = raw_html.matches('<').count();
-                                                        if tag_count > 3000 {
-                                                            warn!(
-                                                                "{}:{} {} contains too many html tags ({})",
-                                                                warc_number,
-                                                                i,
-                                                                url,
-                                                                raw_html.matches('<').count()
-                                                            );
-                                                        }
-                                                        warn!(
-                                                            "{}:{} {} falling back to html soup",
-                                                            warc_number, i, url
-                                                        );
-                                                        match parse_html_soup(
-                                                            &url,
-                                                            &clean_html,
-                                                        ) {
-                                                            Ok(h) => {
-                                                                debug!(
-                                                            "{}:{} {} fall back to html soup worked",
-                                                            warc_number, i, url
-                                                        );
-                                                                html = h
-                                                            },
-                                                            Err(_e) => html = Default::default(),
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
                                         let text;
                                         if html.ok {
-                                            text  = WHITESPACE_REGEX.replace_all(&html.text.join(" "),"").to_string();
-                                            
+                                            text = WHITESPACE_REGEX
+                                                .replace_all(&html.text.join(" "), "")
+                                                .to_string();
+
                                             record.put("title", html.title);
                                             record.put(
                                                 "links",
                                                 to_value(make_urls_absolute(&url, html.links))
                                                     .unwrap(),
                                             );
-                                                                                     record.put(
+                                            record.put(
                                                 "resource_urls",
                                                 to_value(make_urls_absolute(
                                                     &url,
@@ -582,61 +435,76 @@ fn process_warc(
                                                 "{}:{} {} html still failed",
                                                 warc_number, i, url
                                             );
-                                            match fs::write(
+                                            if let Err(_e) = fs::write(
                                                 format!("{}-{}-failed.htm", warc_number, i),
                                                 &parts[1..parts.len()].join(" "),
                                             ) {
-                                                Err(_e) => error!("error writing {}", format!("{}-{}-failed.htm", warc_number, i)),
-                                                Ok(_) => {}
+                                                error!(
+                                                    "error writing {}",
+                                                    format!("{}-{}-failed.htm", warc_number, i)
+                                                )
                                             }
                                             match HTML_BODY_REGEX.captures(&raw_html) {
-                                                Some(caps) =>  {
+                                                Some(caps) => {
                                                     let txt = caps.get(0).unwrap().as_str();
-                                                    let txt2 = HTML_SCRIPT_STYLE_REGEX.replace_all(&txt,"");
-                                                    let txt3 = HTML_TAG_REGEX.replace_all(&txt2,"");
-                                                    text = WHITESPACE_REGEX.replace_all(&txt3," ").to_string();
-                                                },
-                                                None => text = String::from("")
+                                                    let txt2 = HTML_SCRIPT_STYLE_REGEX
+                                                        .replace_all(&txt, "");
+                                                    let txt3 =
+                                                        HTML_TAG_REGEX.replace_all(&txt2, "");
+                                                    text = WHITESPACE_REGEX
+                                                        .replace_all(&txt3, " ")
+                                                        .to_string();
+                                                }
+                                                None => text = String::from(""),
                                             }
                                             match HTML_TITLE_REGEX.captures(&raw_html) {
-                                                Some(caps) =>  record.put("title", caps.get(1).unwrap().as_str()),
-                                                None => record.put("title", "")
+                                                Some(caps) => record
+                                                    .put("title", caps.get(1).unwrap().as_str()),
+                                                None => record.put("title", ""),
                                             }
-                                        record.put(
+                                            record.put(
                                                 "links",
-                                                to_value(
-                                                    make_urls_absolute(&url, HTML_LINK_REGEX.captures_iter(&raw_html).map(
-                                                        |cap| String::from(cap.get(1).unwrap().as_str()))
-                                                        .collect::<Vec<String>>()))
-                                                        .unwrap()
-                                        );
-                                                  record.put(
+                                                to_value(make_urls_absolute(
+                                                    &url,
+                                                    HTML_LINK_REGEX
+                                                        .captures_iter(&raw_html)
+                                                        .map(|cap| {
+                                                            String::from(
+                                                                cap.get(1).unwrap().as_str(),
+                                                            )
+                                                        })
+                                                        .collect::<Vec<String>>(),
+                                                ))
+                                                .unwrap(),
+                                            );
+                                            record.put(
                                                 "resource_urls",
-                                                to_value(
-                                                    make_urls_absolute(&url, HTML_RESOURCE_REGEX.captures_iter(&raw_html).map(
-                                                        |cap| String::from(cap.get(1).unwrap().as_str()))
-                                                        .collect::<Vec<String>>()))
-                                                        .unwrap()
-                                        );
+                                                to_value(make_urls_absolute(
+                                                    &url,
+                                                    HTML_RESOURCE_REGEX
+                                                        .captures_iter(&raw_html)
+                                                        .map(|cap| {
+                                                            String::from(
+                                                                cap.get(1).unwrap().as_str(),
+                                                            )
+                                                        })
+                                                        .collect::<Vec<String>>(),
+                                                ))
+                                                .unwrap(),
+                                            );
                                         }
-                                                                                    //debug!("text-c");
-                                            record.put(
-                                                "word_count",
-                                                text.par_split_whitespace().count() as i32,
-                                            );
-                                            record.put("headings_text", html.headings_text.join(" "));
-                                            record.put(
-                                                "meta_tags",
-                                                to_value(html.meta_tags).unwrap(),
-                                            );
-                                            record.put(
-                                                "keywords",
-                                                keywords(String::from("") + &text),
-                                            );
-                                            record.put("text_content", text);
-                                            record.put("url", url);
-                                             //dbg!(&record);
-                                            Some(record)
+                                        //debug!("text-c");
+                                        record.put(
+                                            "word_count",
+                                            text.par_split_whitespace().count() as i32,
+                                        );
+                                        record.put("headings_text", html.headings_text.join(" "));
+                                        record.put("meta_tags", to_value(html.meta_tags).unwrap());
+                                        record.put("keywords", keywords(String::from("") + &text));
+                                        record.put("text_content", text);
+                                        record.put("url", url);
+                                        //dbg!(&record);
+                                        Some(record)
                                     }
                                 }
                             }

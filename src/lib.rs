@@ -15,8 +15,11 @@ use rake::*;
 use rayon::prelude::*;
 use regex::*;
 use soup::*;
-use subprocess::{Exec, ExitStatus};
+
+use ammonia::Builder;
+use subprocess::{Exec, ExitStatus, Redirection};
 use url::Url;
+
 #[derive(Debug, Fail)]
 pub enum HTMLError {
     #[fail(display = "invalid html")]
@@ -25,6 +28,7 @@ pub enum HTMLError {
 #[derive(Debug)]
 pub struct HTMLResult {
     pub ok: bool,
+    pub html_errors: String,
     pub title: String,
     pub text: Vec<String>,
     pub headings_text: Vec<String>,
@@ -37,6 +41,7 @@ impl Default for HTMLResult {
     fn default() -> Self {
         HTMLResult {
             ok: false,
+            html_errors: String::from(" "),
             title: String::from(" "),
             text: Vec::new(),
             headings_text: Vec::new(),
@@ -50,6 +55,101 @@ impl Default for HTMLResult {
 lazy_static! {
     static ref WHITESPACE_REGEX: Regex = Regex::new(r"\s+").unwrap();
 }
+
+fn get_cleaner(mut cleaner: Builder) -> Builder {
+    let add_tags = vec!["script", "html", "head", "body", "title", "meta", "link"];
+    let rm_tags = vec![
+        "abbr",
+        "acronym",
+        "area",
+        "article",
+        "aside",
+        "b",
+        "bdi",
+        "bdo",
+        "blockquote",
+        "br",
+        "caption",
+        "center",
+        "cite",
+        "code",
+        "col",
+        "colgroup",
+        "data",
+        "dd",
+        "del",
+        "details",
+        "dfn",
+        "div",
+        "dl",
+        "dt",
+        "em",
+        "figcaption",
+        "figure",
+        "footer",
+        "header",
+        "hgroup",
+        "hr",
+        "i",
+        "img",
+        "ins",
+        "kbd",
+        "kbd",
+        "li",
+        "map",
+        "mark",
+        "nav",
+        "ol",
+        "p",
+        "pre",
+        "q",
+        "rp",
+        "rt",
+        "rtc",
+        "ruby",
+        "s",
+        "samp",
+        "small",
+        "span",
+        "strike",
+        "strong",
+        "sub",
+        "summary",
+        "sup",
+        "table",
+        "tbody",
+        "td",
+        "th",
+        "thead",
+        "time",
+        "tr",
+        "tt",
+        "u",
+        "ul",
+        "var",
+        "wbr",
+    ];
+    let mut cct = std::collections::HashSet::new();
+    cct.insert("style");
+    cct.insert("noscript");
+    cct.insert("noframes");
+    let mut attr = std::collections::HashSet::new();
+    attr.insert("src");
+    attr.insert("href");
+    attr.insert("name");
+    attr.insert("content");
+    attr.insert("http-equiv");
+    attr.insert("itemprop");
+    attr.insert("property");
+
+    cleaner
+        .add_tags(add_tags)
+        .rm_tags(&rm_tags)
+        .clean_content_tags(cct)
+        .generic_attributes(attr);
+    cleaner
+}
+
 pub fn check_present_avro(avro_filename: &str) -> bool {
     let avro_gcs_status = Exec::shell("gsutil")
         .arg("stat")
@@ -76,6 +176,67 @@ pub fn download_warc(warc_filename: &str, report_number: usize, warc_number: usi
         debug!("downloaded");
     }
 }
+pub fn find_html_parser(warc_number: usize, i: usize, url: &str, raw_html: &str) -> HTMLResult {
+    let cleaner = get_cleaner(Builder::new());
+    let mut html;
+    let mut tidy_err = String::from("");
+    let clean_html = cleaner.clean(raw_html).to_string();
+    match parse_html(&url, &clean_html, true) {
+        Ok(h) => {
+            html = h;
+        }
+        Err(_e) => {
+            debug!("{}:{} {} tidying up html", warc_number, i, url);
+            // download tidy from https://github.com/htacg/tidy-html5/releases
+            let tidy = Exec::cmd("tidy")
+                .arg("-q")
+                .arg("--show-errors=0")
+                .arg("--show-info=no")
+                .arg("--wrap=0")
+                .arg("--vertical-space=auto")
+                .stdin(raw_html)
+                .stdout(Redirection::Pipe)
+                .stderr(Redirection::Pipe)
+                .capture()
+                .unwrap();
+            let tidy_html = tidy.stdout_str();
+            let tidy_clean_html = cleaner.clean(&tidy_html).to_string();
+
+            tidy_err = tidy.stderr_str();
+            debug!("html errors: {}", tidy_err);
+
+            match parse_html(&url, &tidy_clean_html, false) {
+                Ok(h) => html = h,
+                Err(_e) => {
+                    let tag_count = raw_html.matches('<').count();
+                    if tag_count > 3000 {
+                        warn!(
+                            "{}:{} {} contains too many html tags ({})",
+                            warc_number,
+                            i,
+                            url,
+                            raw_html.matches('<').count()
+                        );
+                    }
+                    warn!("{}:{} {} falling back to html soup", warc_number, i, url);
+                    match parse_html_soup(&url, &clean_html) {
+                        Ok(h) => {
+                            debug!(
+                                "{}:{} {} fall back to html soup worked",
+                                warc_number, i, url
+                            );
+                            html = h;
+                        }
+                        Err(_e) => html = Default::default(),
+                    }
+                }
+            }
+        }
+    }
+    html.html_errors = tidy_err;
+    html
+}
+
 pub fn parse_html(
     url: &str,
     raw_html: &str,
@@ -180,7 +341,7 @@ pub fn parse_html(
                     e
                 );
                 if !check_end_names {
-                    match fs::write(
+                    if let Err(_e) = fs::write(
                         format!(
                             "{}-{}-broken.htm",
                             &url.replace(":", "").replace("/", ""),
@@ -188,15 +349,14 @@ pub fn parse_html(
                         ),
                         &raw_html,
                     ) {
-                        Err(_e) => error!(
+                        error!(
                             "error writing {}",
                             format!(
                                 "{}-{}-broken.htm",
                                 &url.replace(":", "").replace("/", ""),
                                 reader.buffer_position()
                             )
-                        ),
-                        Ok(_) => {}
+                        )
                     }
                 }
                 return Err(HTMLError::InvalidHTML {});
