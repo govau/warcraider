@@ -82,11 +82,12 @@ lazy_static! {
 lazy_static! {
     static ref SCHEMA: Schema = Schema::parse_str(
         r#"
-		{
+	{
 	"name": "url_resource",
 	"type": "record",
 	"fields": [
 		{"name": "url", "type": "string"},
+	    	{"name": "hostname", "type": "string"},
 		{"name": "domain_name", "type": "string"},
 		{"name": "size_bytes", "type": "int"},
 		{"name": "load_time", "type": "float"},
@@ -99,12 +100,12 @@ lazy_static! {
 		{"name": "keywords", "type": {"type": "map", "values": "float"}},
 		{"name": "meta_tags", "type": {"type": "map", "values": "string"}},
 		{"name": "headers", "type": {"type": "map", "values": "string"}},
-        {"name": "google_analytics", "type": {"type": "array", "items": "string"}},
-        {"name": "google_analytics_config", "type": {"type": "array", "items": "string"}},
-        {"name": "html_errors", "type": "string"},
+        	{"name": "google_analytics", "type": {"type": "array", "items": "string"}},
+        	{"name": "google_analytics_config", "type": {"type": "array", "items": "string"}},
+        	{"name": "html_errors", "type": "string"},
 		{"name": "source", "type": "string"}
 	]
-		}
+	}
 	"#
     )
     .unwrap();
