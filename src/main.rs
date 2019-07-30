@@ -49,6 +49,10 @@ lazy_static! {
 }
 
 lazy_static! {
+    static ref GA_CONFIG_REGEX: Regex = Regex::new(r"ga\((.*?)\)").unwrap();
+}
+
+lazy_static! {
     static ref HOSTNAME_REGEX: Regex =
         Regex::new(r"://(.*?(\.au|\.com|\.net|\.org)?)(:|/)").unwrap();
 }
@@ -87,7 +91,7 @@ lazy_static! {
 	"type": "record",
 	"fields": [
 		{"name": "url", "type": "string"},
-	    	{"name": "hostname", "type": "string"},
+        {"name": "hostname", "type": "string"},
 		{"name": "domain_name", "type": "string"},
 		{"name": "size_bytes", "type": "int"},
 		{"name": "load_time", "type": "float"},
@@ -100,9 +104,9 @@ lazy_static! {
 		{"name": "keywords", "type": {"type": "map", "values": "float"}},
 		{"name": "meta_tags", "type": {"type": "map", "values": "string"}},
 		{"name": "headers", "type": {"type": "map", "values": "string"}},
-        	{"name": "google_analytics", "type": {"type": "array", "items": "string"}},
-        	{"name": "google_analytics_config", "type": {"type": "array", "items": "string"}},
-        	{"name": "html_errors", "type": "string"},
+        {"name": "google_analytics", "type": {"type": "array", "items": "string"}},
+        {"name": "google_analytics_config", "type": {"type": "array", "items": "string"}},
+        {"name": "html_errors", "type": "string"},
 		{"name": "source", "type": "string"}
 	]
 	}
@@ -406,7 +410,23 @@ fn process_warc(
                                         );
                                         record.put(
                                             "google_analytics_config",
-                                            to_value(Vec::<String>::new()).unwrap(),
+                                            to_value(
+                                                GA_CONFIG_REGEX
+                                                    .captures_iter(&raw_html)
+                                                    .filter_map(|cap| {
+                                                        let capstr = cap.get(1).unwrap().as_str();
+                                                        // filter out just basic pageview events
+                                                        if capstr == "\"send\", \"pageview\""
+                                                            || capstr == "'send', 'pageview'"
+                                                        {
+                                                            None
+                                                        } else {
+                                                            Some(String::from(capstr))
+                                                        }
+                                                    })
+                                                    .collect::<Vec<String>>(),
+                                            )
+                                            .unwrap(),
                                         );
                                         let html =
                                             find_html_parser(warc_number, i, &url, &raw_html);
@@ -445,6 +465,7 @@ fn process_warc(
                                                     format!("{}-{}-failed.htm", warc_number, i)
                                                 )
                                             }
+                                            // if HTML cannot be parsed, fall back to regex extraction
                                             match HTML_BODY_REGEX.captures(&raw_html) {
                                                 Some(caps) => {
                                                     let txt = caps.get(0).unwrap().as_str();
@@ -503,6 +524,7 @@ fn process_warc(
                                         record.put("meta_tags", to_value(html.meta_tags).unwrap());
                                         record.put("keywords", keywords(String::from("") + &text));
                                         record.put("text_content", text);
+                                        record.put("html_errors", html.html_errors);
                                         record.put("url", url);
                                         //dbg!(&record);
                                         Some(record)
@@ -513,8 +535,9 @@ fn process_warc(
                     })
                     .collect();
                 for record in records {
-                    if let Err(_e) = writer.append(record) {
-                        //dbg!(&record);
+                    if let Err(e) = writer.append(record) {
+                        error!("{}", e);
+                        //dbg!(record);
                         error!("bad record");
                     }
                 }

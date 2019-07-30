@@ -194,6 +194,8 @@ pub fn find_html_parser(warc_number: usize, i: usize, url: &str, raw_html: &str)
                 .arg("--show-info=no")
                 .arg("--wrap=0")
                 .arg("--vertical-space=auto")
+                // ignore some invalid tags like <navigation> http://api.html-tidy.org/tidy/quickref_next.html#custom-tags
+                .arg("--custom-tags=blocklevel")
                 .stdin(raw_html)
                 .stdout(Redirection::Pipe)
                 .stderr(Redirection::Pipe)
@@ -204,30 +206,33 @@ pub fn find_html_parser(warc_number: usize, i: usize, url: &str, raw_html: &str)
 
             tidy_err = tidy.stderr_str();
             debug!("html errors: {}", tidy_err);
-
-            match parse_html(&url, &tidy_clean_html, false) {
-                Ok(h) => html = h,
-                Err(_e) => {
-                    let tag_count = raw_html.matches('<').count();
-                    if tag_count > 3000 {
-                        warn!(
-                            "{}:{} {} contains too many html tags ({})",
-                            warc_number,
-                            i,
-                            url,
-                            raw_html.matches('<').count()
-                        );
-                    }
-                    warn!("{}:{} {} falling back to html soup", warc_number, i, url);
-                    match parse_html_soup(&url, &clean_html) {
-                        Ok(h) => {
-                            debug!(
-                                "{}:{} {} fall back to html soup worked",
-                                warc_number, i, url
+            if tidy_clean_html.is_empty() {
+                html = Default::default();
+            } else {
+                match parse_html(&url, &tidy_clean_html, false) {
+                    Ok(h) => html = h,
+                    Err(_e) => {
+                        let tag_count = raw_html.matches('<').count();
+                        if tag_count > 3000 {
+                            warn!(
+                                "{}:{} {} contains too many html tags ({})",
+                                warc_number,
+                                i,
+                                url,
+                                raw_html.matches('<').count()
                             );
-                            html = h;
                         }
-                        Err(_e) => html = Default::default(),
+                        warn!("{}:{} {} falling back to html soup", warc_number, i, url);
+                        match parse_html_soup(&url, &clean_html) {
+                            Ok(h) => {
+                                debug!(
+                                    "{}:{} {} fall back to html soup worked",
+                                    warc_number, i, url
+                                );
+                                html = h;
+                            }
+                            Err(_e) => html = Default::default(),
+                        }
                     }
                 }
             }
