@@ -168,9 +168,12 @@ pub fn check_present_avro(avro_filename: &str) -> bool {
 
 pub fn download_warc(warc_filename: &str, report_number: usize, warc_number: usize) {
     if !path::Path::new(&warc_filename).exists() {
-        let url = format!("https://datagovau.s3.ap-southeast-2.amazonaws.com/cd574697-6734-4443-b350-9cf9eae427a2/99f43557-1d3d-40e7-bc0c-665a4275d625/dta-report0{}-{}.warc",report_number, warc_number);
+        let url = format!("https://datagovau.s3.ap-southeast-2.amazonaws.com/cd574697-6734-4443-b350-9cf9eae427a2/99f43557-1d3d-40e7-bc0c-665a4275d625/webcrawl0{}/dta-report0{}-{}.warc",report_number,report_number, warc_number);
         info!("starting download: {}", url);
-        let mut response = chttp::get(url).unwrap();
+        let mut response = chttp::get(&url).unwrap();
+        if !response.status().is_success() {
+            panic!("failed to download {}", &url);
+        }
         let mut dest = fs::File::create(&warc_filename).unwrap();
         io::copy(&mut response.body_mut(), &mut dest).unwrap();
         debug!("downloaded");
@@ -188,14 +191,8 @@ pub fn find_html_parser(warc_number: usize, i: usize, url: &str, raw_html: &str)
         Err(_e) => {
             debug!("{}:{} {} tidying up html", warc_number, i, url);
             // download tidy from https://github.com/htacg/tidy-html5/releases
-            let tidy = Exec::cmd("tidy")
-                .arg("-q")
-                .arg("--show-errors=0")
-                .arg("--show-info=no")
-                .arg("--wrap=0")
-                .arg("--vertical-space=auto")
-                // ignore some invalid tags like <navigation> http://api.html-tidy.org/tidy/quickref_next.html#custom-tags
-                .arg("--custom-tags=blocklevel")
+            // ignore some invalid tags like <navigation> http://api.html-tidy.org/tidy/quickref_next.html#custom-tags
+            let tidy = Exec::shell("tidy -q --show-errors=0 --show-info=no --wrap=0 --vertical-space=auto --custom-tags=blocklevel")
                 .stdin(raw_html)
                 .stdout(Redirection::Pipe)
                 .stderr(Redirection::Pipe)

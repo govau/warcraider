@@ -207,7 +207,7 @@ fn process_warc(
             io::BufWriter::with_capacity(256 * 1024, fs::File::create(&avro_filename).unwrap());
         let mut writer = Writer::new(&SCHEMA, file);
         let warc_filename =
-            String::from("") + "dta-report02-" + warc_number.to_string().as_str() + ".warc";
+            String::from("") + "dta-report0"+report_number.to_string().as_str()+"-" + warc_number.to_string().as_str() + ".warc";
         download_warc(&warc_filename, report_number, warc_number);
         let f = fs::File::open(&warc_filename).expect("Unable to open file");
         let br = io::BufReader::new(f);
