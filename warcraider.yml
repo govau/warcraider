@@ -17,11 +17,8 @@ spec:
   serviceName: warcraider
   selector:
     matchLabels:
-      app: warcraider  
-  minReadySeconds: 5
+      app: warcraider
   replicas: 1
-  strategy: 
-    type: Recreate
   template: 
     metadata: 
       labels: 
@@ -45,15 +42,14 @@ spec:
             - 
               name: RUST_LOG
               value: warcraider
-            - 
-              name: REPLICAS
-              value: "3"
+            - name: REPLICAS
+              value: "2"
             - 
               name: REPLICA
               valueFrom: 
                 fieldRef: 
                   fieldPath: "metadata.labels['statefulset.kubernetes.io/pod-ordinal']"
-          image: "registry.gitlab.com/bitemyapp/warcraider:latest"
+          image: "gcr.io/dta-ga-bigquery/warcraider"
           imagePullPolicy: Always
           name: warcraider
           resources: 
