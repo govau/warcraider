@@ -54,8 +54,8 @@ spec:
           name: warcraider
           resources: 
             limits: 
-              cpu: 20m
-              memory: 20M
+              cpu: 1000m
+              memory: 200M
             requests: 
-              cpu: 10m
-              memory: 10M
+              cpu: 500m
+              memory: 100M

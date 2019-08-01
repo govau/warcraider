@@ -86,31 +86,31 @@ lazy_static! {
 lazy_static! {
     static ref SCHEMA: Schema = Schema::parse_str(
         r#"
-	{
-	"name": "url_resource",
-	"type": "record",
-	"fields": [
-		{"name": "url", "type": "string"},
+    {
+    "name": "url_resource",
+    "type": "record",
+    "fields": [
+        {"name": "url", "type": "string"},
         {"name": "hostname", "type": "string"},
-		{"name": "domain_name", "type": "string"},
-		{"name": "size_bytes", "type": "int"},
-		{"name": "load_time", "type": "float"},
-		{"name": "title", "type": "string"},
-		{"name": "text_content", "type": "string"},
-		{"name": "headings_text", "type": "string"},
-		{"name": "word_count", "type": "int"},
-		{"name": "links", "type": {"type": "array", "items": "string"}},
-		{"name": "resource_urls", "type": {"type": "array", "items": "string"}},
-		{"name": "keywords", "type": {"type": "map", "values": "float"}},
-		{"name": "meta_tags", "type": {"type": "map", "values": "string"}},
-		{"name": "headers", "type": {"type": "map", "values": "string"}},
+        {"name": "domain_name", "type": "string"},
+        {"name": "size_bytes", "type": "int"},
+        {"name": "load_time", "type": "float"},
+        {"name": "title", "type": "string"},
+        {"name": "text_content", "type": "string"},
+        {"name": "headings_text", "type": "string"},
+        {"name": "word_count", "type": "int"},
+        {"name": "links", "type": {"type": "array", "items": "string"}},
+        {"name": "resource_urls", "type": {"type": "array", "items": "string"}},
+        {"name": "keywords", "type": {"type": "map", "values": "float"}},
+        {"name": "meta_tags", "type": {"type": "map", "values": "string"}},
+        {"name": "headers", "type": {"type": "map", "values": "string"}},
         {"name": "google_analytics", "type": {"type": "array", "items": "string"}},
         {"name": "google_analytics_config", "type": {"type": "array", "items": "string"}},
         {"name": "html_errors", "type": "string"},
-		{"name": "source", "type": "string"}
-	]
-	}
-	"#
+        {"name": "source", "type": "string"}
+    ]
+    }
+    "#
     )
     .unwrap();
 }
@@ -206,8 +206,12 @@ fn process_warc(
         let file =
             io::BufWriter::with_capacity(256 * 1024, fs::File::create(&avro_filename).unwrap());
         let mut writer = Writer::new(&SCHEMA, file);
-        let warc_filename =
-            String::from("") + "dta-report0"+report_number.to_string().as_str()+"-" + warc_number.to_string().as_str() + ".warc";
+        let warc_filename = String::from("")
+            + "dta-report0"
+            + report_number.to_string().as_str()
+            + "-"
+            + warc_number.to_string().as_str()
+            + ".warc";
         download_warc(&warc_filename, report_number, warc_number);
         let f = fs::File::open(&warc_filename).expect("Unable to open file");
         let br = io::BufReader::new(f);
@@ -233,93 +237,92 @@ fn process_warc(
                     warc_result!(warc),
                     warc_result!(warc),
                     warc_result!(warc)
-				]
-				.par_iter()
-				.filter_map(move |item| {
-					let warc_record = item;
-					if warc_record.version != "0" && warc_record.header.get(&"WARC-Type".into()) == Some(&"response".into()) {
-						let url = String::from("")
-							+ warc_record
-								.header
-								.get(&"WARC-Target-URI".into())
-								.unwrap()
-								.as_str();
-						let size = warc_record
-							.header
-							.get(&"Uncompressed-Content-Length".into())
-							.unwrap_or(&String::from("0"))
-							.parse::<i32>()
-							.unwrap();
-					let hostname = match HOSTNAME_REGEX.captures(&url) {
-						Some(caps) => String::from(caps.get(1).unwrap().as_str()),
-						None => String::from(""),
-					};
-                        //debug!("regex hs: {}",hostname);
-						if size > 2_000_000 || warc_record.content.len() > 2_000_000 {
-							warn!("{}:{} too big {} ({} bytes > 2MB)",warc_number, i, url, size);
-							None
-						}  else if [ "insolvencynotices.asic.gov.au",
-								"data.gov.au",
-								"trove.nla.gov.au",
-								"data.aad.gov.au",
-								"www.trove.nla.gov.au",
-								"epubs.aims.gov.au",
-								"services.aad.gov.au",
-								"results.aec.gov.au",
-								"periodicdisclosures.aec.gov.au",
-								"transcribe.naa.gov.au",
-								"bookshop.nla.gov.au",
-								"recordsearch.naa.gov.au",
-								"library.nma.gov.au",
-								"abr.business.gov.au",
-								"collections.anmm.gov.au",
-								"elibrary.gbrmpa.gov.au",
-								"channelfinder.acma.gov.au",
-								"vrroom.naa.gov.au",
-								"www.tenders.gov.au",
-								"dmzapp17p.ris.environment.gov.au",
-								"discoveringanzacs.naa.gov.au",
-								"elibrary.gbrmpa.gov.au",
-								"neats.nopta.gov.au",
-								"results.aec.gov.au",
-								"recordsearch.naa.gov.au",
-								"services.aad.gov.au",
-								"soda.naa.gov.au",
-								"stat.data.abs.gov.au",
-								"store.anmm.gov.au",
-								"toiletmap.gov.au",
-								"training.gov.au",
-								"transcribe.naa.gov.au",
-								"wels.agriculture.gov.au",
-								"www.padil.gov.au",
-								"www.screenaustralia.gov.au"
-					].contains(&hostname.as_str()) ||
-					url == "http://www.nepc.gov.au/system/files/resources/45fee0f3-1266-a944-91d7-3b98439de8f8/files/dve-prepwk-project2-1-diesel-complex-cuedc.xls" ||
-					url == "https://www.ncver.edu.au/__data/assets/word_doc/0013/3046/2221s.doc" ||
-					url == "https://www.acma.gov.au/-/media/Broadcast-Carriage-Policy/Information/Word-document/reg_qld-planning_data-docx.docx?la=en" ||
-					url == "https://www.acma.gov.au/-/media/Broadcasting-Spectrum-Planning/Information/Word-Document-Digital-TV/Planning-data-Regional-Queensland-TV1.docx?la=en" ||
-                    url == "https://beta.dva.gov.au/sites/default/files/files/providers/vendor/medvendor1sept2015.xls" ||
-					url == "https://www.ppsr.gov.au/sites/g/files/net3626/f/B2G%20Interface%20Specification%20R4.doc" ||
-                    url == "http://guides.dss.gov.au/sites/default/files/2003_ABSTUDY_Policy_Manual.docx" ||
-                    url == "http://www.nepc.gov.au/system/files/resources/45fee0f3-1266-a944-91d7-3b98439de8f8/files/dve-prepwk-project2-1-diesel-complex-simp-cuedc.xls" ||
-                    url.matches("ca91-4-xd").count() > 0 {
-						debug!("{}:{} bad url {}", warc_number, i, url);
-						None
-						} else {
-							Some(WarcResult {
-								url,
-								size,
-								hostname,
-								bytes: warc_record.content[..].to_vec(),
-							})
-						}
-					} else {
-						None
-					}
-				})
-				.collect();
+                ]
+                .par_iter()
+                .filter_map(move |item| {
+                    let warc_record = item;
+                    if warc_record.version != "0" && warc_record.header.get(&"WARC-Type".into()) == Some(&"response".into()) {
+                        let url = String::from("")
+                            + warc_record
+                                .header
+                                .get(&"WARC-Target-URI".into())
+                                .unwrap()
+                                .as_str();
+                        let size = warc_record
+                            .header
+                            .get(&"Uncompressed-Content-Length".into())
+                            .unwrap_or(&String::from("0"))
+                            .parse::<i32>()
+                            .unwrap();
+                    let hostname = match HOSTNAME_REGEX.captures(&url) {
+                        Some(caps) => String::from(caps.get(1).unwrap().as_str()),
+                        None => String::from(""),
+                    };
+                         if [ "insolvencynotices.asic.gov.au",
+                                "data.gov.au",
+                                "trove.nla.gov.au",
+                                "data.aad.gov.au",
+                                "www.trove.nla.gov.au",
+                                "epubs.aims.gov.au",
+                                "services.aad.gov.au",
+                                "results.aec.gov.au",
+                                "periodicdisclosures.aec.gov.au",
+                                "transcribe.naa.gov.au",
+                                "bookshop.nla.gov.au",
+                                "recordsearch.naa.gov.au",
+                                "library.nma.gov.au",
+                                "abr.business.gov.au",
+                                "collections.anmm.gov.au",
+                                "elibrary.gbrmpa.gov.au",
+                                "channelfinder.acma.gov.au",
+                                "vrroom.naa.gov.au",
+                                "www.tenders.gov.au",
+                                "dmzapp17p.ris.environment.gov.au",
+                                "discoveringanzacs.naa.gov.au",
+                                "elibrary.gbrmpa.gov.au",
+                                "neats.nopta.gov.au",
+                                "results.aec.gov.au",
+                                "recordsearch.naa.gov.au",
+                                "services.aad.gov.au",
+                                "soda.naa.gov.au",
+                                "stat.data.abs.gov.au",
+                                "store.anmm.gov.au",
+                                "toiletmap.gov.au",
+                                "training.gov.au",
+                                "transcribe.naa.gov.au",
+                                "wels.agriculture.gov.au",
+                                "www.padil.gov.au",
+                                "www.screenaustralia.gov.au"
+                    ].contains(&hostname.as_str()) ||
+                    ["http://www.nepc.gov.au/system/files/resources/45fee0f3-1266-a944-91d7-3b98439de8f8/files/dve-prepwk-project2-1-diesel-complex-cuedc.xls" ,
+                     "https://www.ncver.edu.au/__data/assets/word_doc/0013/3046/2221s.doc" ,
+                     "https://www.acma.gov.au/-/media/Broadcast-Carriage-Policy/Information/Word-document/reg_qld-planning_data-docx.docx?la=en",
+                    "https://www.acma.gov.au/-/media/Broadcasting-Spectrum-Planning/Information/Word-Document-Digital-TV/Planning-data-Regional-Queensland-TV1.docx?la=en" ,
+                    "https://beta.dva.gov.au/sites/default/files/files/providers/vendor/medvendor1sept2015.xls" ,
+                     "https://www.ppsr.gov.au/sites/g/files/net3626/f/B2G%20Interface%20Specification%20R4.doc" ,
+                     "http://guides.dss.gov.au/sites/default/files/2003_ABSTUDY_Policy_Manual.docx",
+                     "http://www.nepc.gov.au/system/files/resources/45fee0f3-1266-a944-91d7-3b98439de8f8/files/dve-prepwk-project2-1-diesel-complex-simp-cuedc.xls"].contains(&url.as_str()) ||
+                    url.matches("ca91-4-xd").count() > 0 ||
+                     url.matches("sbs.com.au/ondemand").count() > 0
+                    {
+                        debug!("{}:{} excluded url {} as too complex or too large", warc_number, i, url);
+                        None
+                        } else {
+                            Some(WarcResult {
+                                url,
+                                size,
+                                hostname,
+                                bytes: warc_record.content[..].to_vec(),
+                            })
+                        }
+                    } else {
+                        None
+                    }
+                })
+                .collect();
 
-                if i % 1000 < 10 {
+                // flush to disk about every 100 records
+                if i % 1000 < 5 {
                     writer.flush()?;
                 }
 
@@ -365,8 +368,6 @@ fn process_warc(
                                                 );
                                             }
                                         }
-
-                                        //debug!("size-b");
                                         record.put(
                                             "load_time",
                                             headers
@@ -377,7 +378,6 @@ fn process_warc(
                                                 .unwrap_or(0.0)
                                                 / 1000.0,
                                         );
-                                        //debug!("load");
                                         record.put(
                                             "hostname",
                                             headers
@@ -428,9 +428,13 @@ fn process_warc(
                                             )
                                             .unwrap(),
                                         );
-                                        let html =
-                                            find_html_parser(warc_number, i, &url, &raw_html);
-
+                                        let html;
+                                        if item.size > 2_000_000 || content.len() > 2_000_000 {
+                                            warn!("{}:{} content too big, skipping html parsing for {} ({} bytes > 2MB)",warc_number, i, url, item.size);
+                                            html = Default::default();
+                                        } else {
+                                            html = find_html_parser(warc_number, i, &url, &raw_html);
+                                        }
                                         let text;
                                         if html.ok {
                                             text = WHITESPACE_REGEX
@@ -453,7 +457,7 @@ fn process_warc(
                                             );
                                         } else {
                                             error!(
-                                                "{}:{} {} html still failed",
+                                                "{}:{} {} could not be parsed as html even with fixes, falling back to manually extracting a subset of data ",
                                                 warc_number, i, url
                                             );
                                             // if let Err(_e) = fs::write(
@@ -465,6 +469,7 @@ fn process_warc(
                                             //         format!("{}-{}-failed.htm", warc_number, i)
                                             //     )
                                             // }
+
                                             // if HTML cannot be parsed, fall back to regex extraction
                                             match HTML_BODY_REGEX.captures(&raw_html) {
                                                 Some(caps) => {

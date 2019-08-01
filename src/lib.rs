@@ -346,7 +346,10 @@ pub fn parse_html(
                     if let Err(_e) = fs::write(
                         format!(
                             "{}-{}-broken.htm",
-                            &url.replace(":", "").replace("/", ""),
+                            &url.replace(":", "")
+                                .replace("/", "")
+                                .replace("?", "")
+                                .replace("&", ""),
                             reader.buffer_position()
                         ),
                         &raw_html,
@@ -355,7 +358,10 @@ pub fn parse_html(
                             "error writing {}",
                             format!(
                                 "{}-{}-broken.htm",
-                                &url.replace(":", "").replace("/", ""),
+                                &url.replace(":", "")
+                                    .replace("/", "")
+                                    .replace("?", "")
+                                    .replace("&", ""),
                                 reader.buffer_position()
                             )
                         )
