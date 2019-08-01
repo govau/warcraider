@@ -167,7 +167,7 @@ fn main() -> Result<(), Error> {
         Err(_e) => warc_number += 0,
     }
 
-    while warc_number <= 95 {
+    while warc_number <= 96 {
         if warc_number == 99 {
             warn!("404 not found");
             warc_number += replicas;
@@ -221,7 +221,7 @@ fn process_warc(
         warc.next();
         loop {
             if i >= finish_at {
-                info!("no more warc records");
+                info!("no more warc records in {} between {} and {}", warc_filename, start_at, finish_at);
                 break;
             } else if i <= start_at {
                 //debug!("skipping {}",i);
@@ -292,7 +292,8 @@ fn process_warc(
                                 "transcribe.naa.gov.au",
                                 "wels.agriculture.gov.au",
                                 "www.padil.gov.au",
-                                "www.screenaustralia.gov.au"
+                                "www.screenaustralia.gov.au",
+                                "edit.acnc.gov.au"
                     ].contains(&hostname.as_str()) ||
                     ["http://www.nepc.gov.au/system/files/resources/45fee0f3-1266-a944-91d7-3b98439de8f8/files/dve-prepwk-project2-1-diesel-complex-cuedc.xls" ,
                      "https://www.ncver.edu.au/__data/assets/word_doc/0013/3046/2221s.doc" ,
@@ -303,7 +304,8 @@ fn process_warc(
                      "http://guides.dss.gov.au/sites/default/files/2003_ABSTUDY_Policy_Manual.docx",
                      "http://www.nepc.gov.au/system/files/resources/45fee0f3-1266-a944-91d7-3b98439de8f8/files/dve-prepwk-project2-1-diesel-complex-simp-cuedc.xls"].contains(&url.as_str()) ||
                     url.matches("ca91-4-xd").count() > 0 ||
-                     url.matches("sbs.com.au/ondemand").count() > 0
+                     url.matches("sbs.com.au/ondemand").count() > 0 ||
+                     url.matches("sbs.com.au/news").count() > 0
                     {
                         debug!("{}:{} excluded url {} as too complex or too large", warc_number, i, url);
                         None
