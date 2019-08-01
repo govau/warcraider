@@ -336,7 +336,7 @@ pub fn parse_html(
             }
             Ok(Event::Eof) => break, // exits the loop when reaching end of file
             Err(e) => {
-                warn!(
+                debug!(
                     "Error {} at position {}: {:?}",
                     url,
                     reader.buffer_position(),

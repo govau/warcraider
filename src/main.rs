@@ -303,7 +303,7 @@ fn process_warc(
                     url == "http://guides.dss.gov.au/sites/default/files/2003_ABSTUDY_Policy_Manual.docx" ||
                     url == "http://www.nepc.gov.au/system/files/resources/45fee0f3-1266-a944-91d7-3b98439de8f8/files/dve-prepwk-project2-1-diesel-complex-simp-cuedc.xls" ||
                     url.matches("ca91-4-xd").count() > 0 {
-						warn!("{}:{} bad url {}", warc_number, i, url);
+						debug!("{}:{} bad url {}", warc_number, i, url);
 						None
 						} else {
 							Some(WarcResult {
@@ -456,15 +456,15 @@ fn process_warc(
                                                 "{}:{} {} html still failed",
                                                 warc_number, i, url
                                             );
-                                            if let Err(_e) = fs::write(
-                                                format!("{}-{}-failed.htm", warc_number, i),
-                                                &parts[1..parts.len()].join(" "),
-                                            ) {
-                                                error!(
-                                                    "error writing {}",
-                                                    format!("{}-{}-failed.htm", warc_number, i)
-                                                )
-                                            }
+                                            // if let Err(_e) = fs::write(
+                                            //     format!("{}-{}-failed.htm", warc_number, i),
+                                            //     &parts[1..parts.len()].join(" "),
+                                            // ) {
+                                            //     error!(
+                                            //         "error writing {}",
+                                            //         format!("{}-{}-failed.htm", warc_number, i)
+                                            //     )
+                                            // }
                                             // if HTML cannot be parsed, fall back to regex extraction
                                             match HTML_BODY_REGEX.captures(&raw_html) {
                                                 Some(caps) => {
