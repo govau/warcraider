@@ -37,7 +37,7 @@
         { "name": "RUST_LOG", "value": "warcraider" },
         { "name": "REPLICAS", "value": "8" },
         { "name": "WARC_NUMBER", "value": "1" },
-        { "name": "OFFSET", "value": "3" },
+        { "name": "OFFSET", "value": "1" },
         { "name": "PYTHONIOENCODING", "value": "UTF-8" }
       ],
       "externalConsole": true
