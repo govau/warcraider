@@ -1,4 +1,4 @@
-SET RUSTFLAGS=-C target-cpu=native -C link-args=/STACK:4194304
+SET RUSTFLAGS=-C target-cpu=native
 SET PYTHONIOENCODING=UTF-8
 SET REPLICAS=16
 cargo build --release
