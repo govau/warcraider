@@ -293,7 +293,10 @@ fn process_warc(
                                 "wels.agriculture.gov.au",
                                 "www.padil.gov.au",
                                 "www.screenaustralia.gov.au",
-                                "edit.acnc.gov.au"
+                                "edit.acnc.gov.au",
+                                "ifp.mychild.gov.au",
+                                "printsandprintmaking.gov.au",
+                                "link.aiatsis.gov.au"
                     ].contains(&hostname.as_str()) ||
                     ["http://www.nepc.gov.au/system/files/resources/45fee0f3-1266-a944-91d7-3b98439de8f8/files/dve-prepwk-project2-1-diesel-complex-cuedc.xls" ,
                      "https://www.ncver.edu.au/__data/assets/word_doc/0013/3046/2221s.doc" ,
@@ -304,8 +307,9 @@ fn process_warc(
                      "http://guides.dss.gov.au/sites/default/files/2003_ABSTUDY_Policy_Manual.docx",
                      "http://www.nepc.gov.au/system/files/resources/45fee0f3-1266-a944-91d7-3b98439de8f8/files/dve-prepwk-project2-1-diesel-complex-simp-cuedc.xls"].contains(&url.as_str()) ||
                     url.matches("ca91-4-xd").count() > 0 ||
-                     url.matches("sbs.com.au/ondemand").count() > 0 ||
-                     url.matches("sbs.com.au/news").count() > 0
+                    url.matches("sbs.com.au/ondemand").count() > 0 ||
+                    url.matches("sbs.com.au/news").count() > 0 ||
+                    url.matches("abc.net.au/news").count() > 0
                     {
                         debug!("{}:{} excluded url {} as too complex or too large", warc_number, i, url);
                         None
