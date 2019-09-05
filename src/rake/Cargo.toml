@@ -1,0 +1,18 @@
+[package]
+name = "rake"
+version = "0.1.5"
+authors = ["Navid <yaa110@gmail.com>"]
+license = "MIT/Apache-2.0"
+readme = "README.md"
+keywords = ["rake", "algorithm", "keyword"]
+repository = "https://github.com/yaa110/rake-rs"
+homepage = "https://github.com/yaa110/rake-rs"
+documentation = "https://docs.rs/rake"
+description = "Rust implementation of Rapid Automatic Keyword Extraction (RAKE) algorithm"
+categories = ["algorithms", "text-processing"]
+
+[badges]
+travis-ci = { repository = "yaa110/rake-rs" }
+
+[dependencies]
+regex = "~1.3"

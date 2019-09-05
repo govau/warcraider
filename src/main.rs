@@ -1,5 +1,3 @@
-#[macro_use]
-extern crate lazy_static;
 #[macro_export]
 macro_rules! warc_result {
     ($warc: ident ) => {
@@ -37,6 +35,7 @@ use failure::Error;
 use git_version::git_version;
 use libflate::gzip::Decoder;
 use log::{debug, error, info, warn};
+use once_cell::sync::Lazy;
 use rayon::prelude::*;
 use regex::*;
 use rust_warc::WarcReader;
@@ -44,48 +43,31 @@ use rust_warc::WarcReader;
 use stackdriver_logger;
 use subprocess::{Exec, Redirection};
 
-lazy_static! {
-    static ref GA_REGEX: Regex =
-        Regex::new(r"\bUA-\d{4,10}-\d{1,4}\b|\bGTM-[A-Z0-9]{1,7}\b").unwrap();
-}
+static GA_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"\bUA-\d{4,10}-\d{1,4}\b|\bGTM-[A-Z0-9]{1,7}\b").unwrap());
 
-lazy_static! {
-    static ref GA_CONFIG_REGEX: Regex = Regex::new(r"ga\((.*?)\)").unwrap();
-}
+static GA_CONFIG_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"ga\((.*?)\)").unwrap());
 
-lazy_static! {
-    static ref HOSTNAME_REGEX: Regex =
-        Regex::new(r"://(.*?(\.au|\.com|\.net|\.org)?)(:|/)").unwrap();
-}
+static HOSTNAME_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"://(.*?(\.au|\.com|\.net|\.org)?)(:|/)").unwrap());
 
-lazy_static! {
-    static ref WHITESPACE_REGEX: Regex = Regex::new(r"(\s|\\n){2,}").unwrap();
-}
-lazy_static! {
-    static ref HTML_TAG_REGEX: Regex = Regex::new(r"(?s)</*.*?>").unwrap();
-}
-lazy_static! {
-    static ref HTML_BODY_REGEX: Regex = Regex::new(r"(?s)<(?:body|BODY).*>(.*)").unwrap();
-}
-lazy_static! {
-    static ref HTML_TITLE_REGEX: Regex = Regex::new(r"(?sU)<(?:title|TITLE).*>(.*)<").unwrap();
-}
-lazy_static! {
-    static ref HTML_SCRIPT_STYLE_REGEX: Regex =
-        Regex::new(r"(?sU)(<(?:script|SCRIPT|style|STYLE).*>.*</(?:script|SCRIPT|style|STYLE).*>)")
-            .unwrap();
-}
+static WHITESPACE_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"(\s|\\n){2,}").unwrap());
+static HTML_TAG_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?s)</*.*?>").unwrap());
+static HTML_BODY_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?s)<(?:body|BODY).*>(.*)").unwrap());
+static HTML_TITLE_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?sU)<(?:title|TITLE).*>(.*)<").unwrap());
+static HTML_SCRIPT_STYLE_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?sU)(<(?:script|SCRIPT|style|STYLE).*>.*</(?:script|SCRIPT|style|STYLE).*>)")
+        .unwrap()
+});
 // https://stackoverflow.com/a/15926317
-lazy_static! {
-    static ref HTML_LINK_REGEX: Regex =
-        Regex::new(r#"(?s)\s+(?:[^>]*?\s+)?href=["'](.*?)["']"#).unwrap();
-}
-lazy_static! {
-    static ref HTML_RESOURCE_REGEX: Regex =
-        Regex::new(r#"(?s)\s+(?:[^>]*?\s+)?src=["'](.*?)["']"#).unwrap();
-}
-lazy_static! {
-    static ref SCHEMA: Schema = Schema::parse_str(
+static HTML_LINK_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"(?s)\s+(?:[^>]*?\s+)?href=["'](.*?)["']"#).unwrap());
+static HTML_RESOURCE_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"(?s)\s+(?:[^>]*?\s+)?src=["'](.*?)["']"#).unwrap());
+static SCHEMA: Lazy<Schema> = Lazy::new(|| {
+    Schema::parse_str(
         r#"
     {
     "name": "url_resource",
@@ -111,10 +93,10 @@ lazy_static! {
         {"name": "source", "type": "string"}
     ]
     }
-    "#
+    "#,
     )
-    .unwrap();
-}
+    .unwrap()
+});
 
 struct WarcResult {
     url: String,
@@ -391,13 +373,12 @@ fn process_warc(
                                             )
                                             .unwrap(),
                                         );
-                                        let html;
-                                        if item.size > 2_000_000 || content.len() > 2_000_000 {
+                                        let html = if item.size > 2_000_000 || content.len() > 2_000_000 {
                                             warn!("{}:{} content too big, skipping html parsing for {} ({} bytes > 2MB)",warc_number, i, url, item.size);
-                                            html = Default::default();
+                                            Default::default()
                                         } else {
-                                            html = find_html_parser(warc_number, i, &url, &raw_html);
-                                        }
+                                            find_html_parser(warc_number, i, &url, &raw_html)
+                                        };
                                         let text;
                                         if html.ok {
                                             text = WHITESPACE_REGEX

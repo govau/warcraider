@@ -1,6 +1,4 @@
 #[macro_use]
-extern crate lazy_static;
-#[macro_use]
 extern crate failure;
 
 use std::collections::HashMap;
@@ -8,10 +6,13 @@ use std::fs;
 use std::io;
 use std::path;
 
+mod rake;
+use rake::{KeywordScore, Rake, StopWords};
+
 use log::{debug, error, info, warn};
+use once_cell::sync::Lazy;
 use quick_xml::events::Event;
 use quick_xml::Reader;
-use rake::*;
 use rayon::prelude::*;
 use regex::*;
 use soup::*;
@@ -52,9 +53,7 @@ impl Default for HTMLResult {
     }
 }
 
-lazy_static! {
-    static ref WHITESPACE_REGEX: Regex = Regex::new(r"\s+").unwrap();
-}
+static WHITESPACE_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"\s+").unwrap());
 
 fn get_cleaner(mut cleaner: Builder) -> Builder {
     let add_tags = vec!["script", "html", "head", "body", "title", "meta", "link"];
@@ -170,7 +169,7 @@ pub fn download_warc(warc_filename: &str, report_number: usize, warc_number: usi
     if !path::Path::new(&warc_filename).exists() {
         let url = format!("https://datagovau.s3.ap-southeast-2.amazonaws.com/cd574697-6734-4443-b350-9cf9eae427a2/99f43557-1d3d-40e7-bc0c-665a4275d625/webcrawl0{}/dta-report0{}-{}.warc",report_number,report_number, warc_number);
         info!("starting download: {}", url);
-        let mut response = chttp::get(&url).unwrap();
+        let mut response = isahc::get(&url).unwrap();
         if !response.status().is_success() {
             panic!("failed to download {}", &url);
         }
@@ -380,9 +379,7 @@ pub fn parse_html(
     Ok(result)
 }
 
-lazy_static! {
-    static ref R: Rake = Rake::new(StopWords::from_file("SmartStoplist.txt").unwrap());
-}
+static R: Lazy<Rake> = Lazy::new(|| Rake::new(StopWords::from_file("SmartStoplist.txt").unwrap()));
 pub fn keywords(text_words: String) -> HashMap<String, f32> {
     let mut keywords = HashMap::<String, f32>::new();
     // debug!("{} words to be raked", text_words.split_whitespace().count());
