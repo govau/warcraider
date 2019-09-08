@@ -1,5 +1,8 @@
 #[macro_use]
 extern crate failure;
+extern crate serde;
+#[macro_use]
+extern crate serde_derive;
 
 use std::collections::HashMap;
 use std::fs;
@@ -26,7 +29,7 @@ pub enum HTMLError {
     #[fail(display = "invalid html")]
     InvalidHTML {},
 }
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize)]
 pub struct HTMLResult {
     pub ok: bool,
     pub html_errors: String,

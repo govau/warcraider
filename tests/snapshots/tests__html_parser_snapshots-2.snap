@@ -1,0 +1,26 @@
+---
+source: tests/lib-tests.rs
+expression: meta_tags
+---
+[
+    "Description:The divorce and separation financial checklist gives you some practical steps to separate your finances and get your money on track. Visit ASIC\'s MoneySmart website for more. ",
+    "content-type:text/html; charset=utf-8",
+    "dcterms.creator:c=au;o=Australian Government;ou=Australian Government Australian Securities & Investments Commission",
+    "dcterms.date:2019-04-26",
+    "dcterms.description:The divorce and separation financial checklist gives you some practical steps to separate your finances and get your money on track. Visit ASIC\'s MoneySmart website for more. ",
+    "dcterms.identifier:/life-events-and-you/life-events/divorce-and-separation/divorce-and-separation-financial-checklist",
+    "dcterms.publisher:c=au;o=Australian Government;ou=Australian Government Australian Securities & Investments Commission",
+    "dcterms.subject:Consumer protection; EF Economics and Finance",
+    "dcterms.title:Divorce and separation financial checklist",
+    "og:description:The divorce and separation financial checklist gives you some practical steps to separate your finances and get your money on track. Visit ASIC\'s MoneySmart website for more. ",
+    "og:title:Divorce and separation financial checklist | ASIC\'s MoneySmart",
+    "og:type:website",
+    "og:url:https://www.moneysmart.gov.au/life-events-and-you/life-events/divorce-and-separation/divorce-and-separation-financial-checklist",
+    "position:5",
+    "theme-color:#6b8e06",
+    "twitter:card:summary",
+    "twitter:description:The divorce and separation financial checklist gives you some practical steps to separate your finances and get your money on track. Visit ASIC\'s MoneySmart website for more. ",
+    "twitter:site:@moneysmartteam",
+    "twitter:title:Divorce and separation financial checklist | ASIC\'s MoneySmart",
+    "viewport:width=device-width, initial-scale=1",
+]

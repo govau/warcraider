@@ -1,6 +1,24 @@
 #[cfg(test)]
 mod tests {
-    //find_html_parser(warc_number, i, &url, &raw_html)
+    use insta::{assert_debug_snapshot, assert_json_snapshot};
+
+    #[test]
+    fn test_html_parser_snapshots() {
+        let raw_html = std::fs::read_to_string("tests/moneysmart.htm").unwrap();
+        let html: warcraider::HTMLResult = warcraider::find_html_parser(1, 1,
+"https://www.moneysmart.gov.au/life-events-and-you/life-events/divorce-and-separation/divorce-and-separation-financial-checklist", &raw_html);
+        assert_json_snapshot!( html,{
+        ".meta_tags" => "[meta_tags]"
+        });
+        let mut meta_tags = html
+            .meta_tags
+            .iter()
+            .map(|(k, v)| format!("{}:{}", k, v))
+            .collect::<Vec<String>>();
+        meta_tags.sort();
+        assert_debug_snapshot!(meta_tags);
+    }
+
     #[test]
     fn test_make_urls_absolute() {
         let result = warcraider::make_urls_absolute(
