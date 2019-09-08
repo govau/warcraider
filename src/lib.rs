@@ -54,6 +54,8 @@ impl Default for HTMLResult {
 }
 
 static WHITESPACE_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"\s+").unwrap());
+static QUOTE_MARKS_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"'|“|"|&quot;|%\d\d$"#).unwrap());
 
 fn get_cleaner(mut cleaner: Builder) -> Builder {
     let add_tags = vec!["script", "html", "head", "body", "title", "meta", "link"];
@@ -397,16 +399,20 @@ pub fn keywords(text_words: String) -> HashMap<String, f32> {
 pub fn make_urls_absolute(url: &str, mut links: Vec<String>) -> Vec<String> {
     links.sort();
     links.dedup();
-    match Url::parse(url) {
+    links = match Url::parse(url) {
         Ok(this_document) => links
             .par_iter()
             .map(move |link| match this_document.join(link) {
                 Ok(l) => l.into_string(),
                 Err(_e) => String::from("") + &link,
             })
+            .map(move |link| QUOTE_MARKS_REGEX.replace_all(&link, "").to_string())
             .collect(),
         Err(_e) => links,
-    }
+    };
+    links.sort();
+    links.dedup();
+    links
 }
 
 pub fn parse_html_soup(url: &str, raw_html: &str) -> Result<HTMLResult, HTMLError> {

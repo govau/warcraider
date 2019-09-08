@@ -48,7 +48,7 @@ pub fn on_blacklist(hostname: &str, url: &str) -> bool {
                      "https://www.ppsr.gov.au/sites/g/files/net3626/f/B2G%20Interface%20Specification%20R4.doc" ,
                      "http://guides.dss.gov.au/sites/default/files/2003_ABSTUDY_Policy_Manual.docx",
                      "http://www.nepc.gov.au/system/files/resources/45fee0f3-1266-a944-91d7-3b98439de8f8/files/dve-prepwk-project2-1-diesel-complex-simp-cuedc.xls"];
-    
+
     hostname_blacklist.contains(&hostname)
         || url_blacklist.contains(&url)
         || url.matches("ca91-4-xd").count() > 0
