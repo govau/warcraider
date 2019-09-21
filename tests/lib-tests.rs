@@ -1,3 +1,5 @@
+extern crate insta;
+
 #[cfg(test)]
 mod tests {
     use insta::{assert_debug_snapshot, assert_json_snapshot};

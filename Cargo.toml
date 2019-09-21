@@ -23,8 +23,8 @@ isahc = "0.7.3"
 ammonia = "3.0.0"
 soup = "0.4.1"
 once_cell = "1.1.0"
-serde = "1.0.100"
-serde_derive = "1.0.100"
+serde = "1.0.101"
+serde_derive = "1.0.101"
 
 [dependencies.insta]
 version = "0.11.0"
