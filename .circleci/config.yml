@@ -20,7 +20,7 @@ jobs:
           name: Check formatting
           command: |
             rustfmt --version
-            cargo fmt -l
+            cargo fmt -- -l
 #      - run:
 #          name: Nightly Build
 #          command: |
