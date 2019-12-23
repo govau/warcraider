@@ -28,8 +28,12 @@ jobs:
 #            rustup run nightly cargo --version --verbose
 #            rustup run nightly cargo build
       - run:
+          name: Stable Install
+          command: rustup install stable
+      - run:
           name: Stable Build
           command: |
+
             rustup run stable rustc --version --verbose
             rustup run stable cargo --version --verbose
             rustup run stable cargo build
