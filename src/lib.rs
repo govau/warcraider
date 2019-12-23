@@ -56,8 +56,7 @@ impl Default for HTMLResult {
 }
 
 static WHITESPACE_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"\s+").unwrap());
-static QUOTE_MARKS_REGEX: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r#"'|“|"|&quot;|%\d\d$"#).unwrap());
+static QUOTE_MARKS_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r#"'|“|"|&quot;|%\d\d$"#).unwrap());
 
 fn get_cleaner(mut cleaner: Builder) -> Builder {
     let add_tags = vec!["script", "html", "head", "body", "title", "meta", "link"];

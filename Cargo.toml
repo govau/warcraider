@@ -5,7 +5,7 @@ authors = ["Alex Sadleir <maxious@lambdacomplex.org>"]
 edition = "2018"
 
 [dependencies]
-avro-rs = "0.6.5"
+avro-rs = "0.6.6"
 failure = "0.1.5"
 rust_warc = "1.0.0"
 libflate = "0.1.27"
