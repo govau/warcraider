@@ -29,7 +29,9 @@ jobs:
 #            rustup run nightly cargo build
       - run:
           name: Stable Install
-          command: rustup install stable
+          command: |
+          rustup install stable
+          apt install tidy
       - run:
           name: Stable Build
           command: |
