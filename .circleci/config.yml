@@ -31,7 +31,7 @@ jobs:
           name: Stable Install
           command: |
           rustup install stable
-          apt install tidy
+          sudo apt install tidy
       - run:
           name: Stable Build
           command: |
