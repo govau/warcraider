@@ -3,6 +3,9 @@
 ## :warning: :construction: here be dragons
 This is mostly developed on Windows and there are hardcoded URLs to download WARC files from Amazon S3 upload Avro files to Google Cloud Storage.
 
+## Developing 
+We suggest the use of rust-analyzer https://github.com/rust-analyzer/rust-analyzer/blob/master/docs/user/README.md
+
 ## Running
 You'll need to download download tidy-html5 5.60 from https://github.com/htacg/tidy-html5/releases or your package manager (homebrew on OSX: brew install tidy-html5).
 
